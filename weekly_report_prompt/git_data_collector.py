@@ -2,8 +2,8 @@ import git
 from datetime import datetime
 from typing import List
 
-from schemas import CommitData
-from config_loader import ConfigLoader
+from weekly_report_prompt.schemas import CommitData
+from weekly_report_prompt.config_loader import ConfigLoader
 
 
 class GitDataCollector:

@@ -1,9 +1,9 @@
-from git_data_collector import GitDataCollector
-from prompt_generator import PromptGenerator
-from report_file_manager import ReportFileManager
-from schemas import CommitDataSummary
+from weekly_report_prompt.git_data_collector import GitDataCollector
+from weekly_report_prompt.prompt_generator import PromptGenerator
+from weekly_report_prompt.report_file_manager import ReportFileManager
+from weekly_report_prompt.schemas import CommitDataSummary
 from datetime import datetime, timedelta
-from config_loader import ConfigLoader
+from weekly_report_prompt.config_loader import ConfigLoader
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text

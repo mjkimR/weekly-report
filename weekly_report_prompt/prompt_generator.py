@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 
-from config_loader import ConfigLoader
-from schemas import CommitData
+from weekly_report_prompt.config_loader import ConfigLoader
+from weekly_report_prompt.schemas import CommitData
 import tiktoken
 
 

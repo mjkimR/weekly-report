@@ -3,8 +3,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from config_loader import ConfigLoader
-from const import REPORT_BLANK_MESSAGE, MEMO_BLANK_MESSAGE
+from weekly_report_prompt.config_loader import ConfigLoader
+from weekly_report_prompt.const import REPORT_BLANK_MESSAGE, MEMO_BLANK_MESSAGE
 
 
 class ReportFileManager:
@@ -57,6 +57,25 @@ class ReportFileManager:
                     # If the report is blank, delete it
                     os.remove(file_path)
 
+        # Clean up old history files if they exceed the limit
+        self._cleanup_old_history_files()
+
+    def _cleanup_old_history_files(self):
+        """Remove old history files that exceed the history limit."""
+        history_files = []
+        for filename in os.listdir(self.history_dir):
+            if filename.startswith("report-") and filename.endswith(".md"):
+                file_path = os.path.join(self.history_dir, filename)
+                history_files.append((filename, file_path))
+
+        # Sort by filename (which contains the date) in descending order
+        history_files.sort(key=lambda x: x[0], reverse=True)
+
+        # Remove files that exceed the limit
+        if len(history_files) > self.history_limit:
+            for filename, file_path in history_files[self.history_limit:]:
+                os.remove(file_path)
+
     def fetch_report_history(self):
         """Return a list of previous reports."""
         reports = []
@@ -68,6 +87,30 @@ class ReportFileManager:
                     content = f.read()
                 reports.append(content)
         return sorted(reports, reverse=True)[: self.history_limit]
+
+    def get_recent_reports(self, count=None):
+        """Get recent reports from history."""
+        if count is None:
+            count = self.history_limit
+
+        reports = []
+        history_files = []
+
+        for filename in os.listdir(self.history_dir):
+            if filename.startswith("report-") and filename.endswith(".md"):
+                file_path = os.path.join(self.history_dir, filename)
+                history_files.append((filename, file_path))
+
+        # Sort by filename (which contains the date) in descending order
+        history_files.sort(key=lambda x: x[0], reverse=True)
+
+        # Read the most recent files
+        for filename, file_path in history_files[:count]:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            reports.append(content)
+
+        return reports
 
     def get_last_report_date(self):
         """Return the date of the last report."""
@@ -90,10 +133,24 @@ class ReportFileManager:
     def fetch_memo(self):
         memo_path = os.path.join(self.build_dir, "memo.md")
         if not os.path.exists(memo_path):
-            with open(memo_path) as f:
+            with open(memo_path, "w", encoding="utf-8") as f:
                 f.write(MEMO_BLANK_MESSAGE)
         with open(os.path.join(self.build_dir, "memo.md"), "r", encoding="utf-8") as f:
             memo = f.read().strip()
         if memo == MEMO_BLANK_MESSAGE.strip():
             return None
         return memo
+
+    def read_memo(self):
+        """Read memo file if it exists."""
+        memo_path = os.path.join(self.build_dir, "memo.md")
+        if not os.path.exists(memo_path):
+            return None
+
+        with open(memo_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+
+        if content == MEMO_BLANK_MESSAGE.strip():
+            return None
+
+        return content
