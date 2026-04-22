@@ -18,7 +18,7 @@ class GitDataCollector:
     ) -> List[CommitData]:
         """Collect commits since the given date, excluding merge commits and those not matching the configured author."""
         commits = []
-        for commit in self.repo.iter_commits(since=since_date):
+        for commit in self.repo.iter_commits(all=True, since=since_date):
             # Exclude merge commits
             if len(commit.parents) > 1:
                 continue
