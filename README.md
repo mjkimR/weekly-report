@@ -22,13 +22,51 @@ This project doesn't generate the actual weekly reports directly. Instead, it:
 
 ## Usage
 
-1. Configure your repositories and settings in `config/config.yaml`
-2. Run the tool to generate prompts for your weekly report
-3. Use the generated prompt with your preferred LLM to create the actual report
+1. Run `uv run python setup_conf.py` once to create `config/config.yaml` and `config/template.md` from the examples
+2. Configure your repositories and settings in `config/config.yaml`
+3. Run `uv run weekly-report-prompt` to generate the prompt
+4. Use the generated prompt with your preferred LLM to create the actual report
+5. Paste the report into `build/report-<timestamp>.md`; the next run archives it and uses it as the starting point
+
+```
+uv run weekly-report-prompt [--dry-run] [--config PATH] [--template PATH] [--build-dir PATH]
+```
+
+Use `--dry-run` to see the summary and token count without writing anything to the build
+directory. A run that finds no commits exits non-zero and leaves the build directory alone.
+
+### Settings
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `author` | — | Only commits by this author name are collected |
+| `repository` | `[]` | Paths of the Git repositories to read |
+| `lang` | `ko` | Language the LLM should write the report in |
+| `max_diff_lines` | `25` | Diff lines shown per commit before truncation |
+| `report_history_limit` | `10` | Reports kept in `build/history` and fed to the prompt |
+| `large_prompt_tokens` | `150000` | Warn above this token count |
+
+The `large_prompt_tokens` warning is advisory; nothing is truncated and the run still
+succeeds. Raise it if you paste the prompt into a model with a large context window —
+Gemini and GPT fit roughly 1M tokens, Claude roughly 200k.
+
+## Development
+
+```
+uv run pytest                       # everything
+uv run pytest -m "not integration"  # skip the tests that shell out to git
+uv run ruff check .                 # lint
+uv run pyright                      # type check
+```
 
 ## Output
 
-The tool generates:
-- A structured prompt file for LLM
-- A template file for report formatting
-- Historical tracking of previous reports
+The tool writes into `build/`:
+- `prompt-<timestamp>.md` — the prompt to paste into an LLM
+- `report-<timestamp>.md` — a blank report for you to fill in with the LLM's answer
+- `memo.md` — free-form notes carried into the next prompt
+- `history/` — reports you filled in on previous runs
+
+`build/` is the tool's only persistent state. The archive under `history/` is what decides
+the next run's collection window, and it is not tracked by Git — so it is not backed up
+either.
