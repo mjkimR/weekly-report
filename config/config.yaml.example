@@ -7,3 +7,8 @@ repository:
 
 max_diff_lines: 200  # Maximum number of lines to show in a diff
 report_history_limit: 5
+
+# Warn when the generated prompt exceeds this many tokens. Advisory only -- nothing is
+# truncated. Raise it if you paste into a model with a large context window
+# (Gemini and GPT fit ~1M tokens; Claude fits ~200k).
+large_prompt_tokens: 150000

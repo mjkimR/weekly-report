@@ -3,6 +3,8 @@ from pathlib import Path
 import yaml
 import os
 
+from weekly_report_prompt.schemas import AppConfig
+
 
 class ConfigLoader:
     def __init__(self, config_path=None, template_path=None):
@@ -18,30 +20,30 @@ class ConfigLoader:
         if not os.path.exists(config_path):
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
         with open(config_path, "r", encoding="utf-8") as f:
-            self.config = yaml.safe_load(f)
+            self.settings = AppConfig.model_validate(yaml.safe_load(f) or {})
 
         if not os.path.exists(template_path):
             raise FileNotFoundError(f"Template file not found: {template_path}")
         with open(template_path, "r", encoding="utf-8") as f:
             self.template = f.read()
 
-    def get(self, key, default=None):
-        return self.config.get(key, default)
-
     def get_author(self):
-        return self.config.get("author")
+        return self.settings.author
 
     def get_repositories(self):
-        return self.config.get("repository", [])
+        return self.settings.repository
 
     def get_max_diff_lines(self):
-        return self.config.get("max_diff_lines", 25)
+        return self.settings.max_diff_lines
 
     def get_lang(self):
-        return self.config.get("lang", "ko")
+        return self.settings.lang
 
     def get_report_history_limit(self):
-        return self.config.get("report_history_limit", 10)
+        return self.settings.report_history_limit
+
+    def get_large_prompt_tokens(self):
+        return self.settings.large_prompt_tokens
 
     def get_template(self):
         return self.template

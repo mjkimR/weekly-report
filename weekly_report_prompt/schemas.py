@@ -1,11 +1,28 @@
 from datetime import datetime
-from pydantic import BaseModel
+from typing import List
+
+from pydantic import BaseModel, Field
+
+
+class AppConfig(BaseModel):
+    """Validated contents of config/config.yaml."""
+
+    author: str
+    repository: List[str] = Field(default_factory=list)
+    max_diff_lines: int = 25
+    lang: str = "ko"
+    report_history_limit: int = 10
+    # Advisory only, and nothing enforces it. How many tokens are too many depends on the
+    # model you paste the prompt into -- Claude fits ~200k, Gemini and GPT ~1M -- so this
+    # is a setting rather than a constant. The default leaves headroom under the smallest
+    # of those, on the theory that a prompt this large is mostly diff noise anyway.
+    large_prompt_tokens: int = 150_000
 
 
 class CommitStats(BaseModel):
     insertions: int
     deletions: int
-    files: int
+    changed_files: List[str]
 
 
 class CommitData(BaseModel):
@@ -29,7 +46,7 @@ class CommitData(BaseModel):
             stats=CommitStats(
                 insertions=commit.stats.total["insertions"],
                 deletions=commit.stats.total["deletions"],
-                files=commit.stats.total["files"],
+                changed_files=sorted(commit.stats.files),
             ),
             diff=diff,
         )
