@@ -1,4 +1,5 @@
 import git
+import os
 from datetime import datetime
 from typing import List
 
@@ -11,6 +12,7 @@ class GitDataCollector:
         self.config_loader = config_loader
         self.author = config_loader.get_author()
         self.repo = git.Repo(repo_path)
+        self._empty_tree_sha = None
 
     def collect_commits(
         self,
@@ -18,7 +20,12 @@ class GitDataCollector:
     ) -> List[CommitData]:
         """Collect commits since the given date, excluding merge commits and those not matching the configured author."""
         commits = []
-        for commit in self.repo.iter_commits(all=True, since=since_date):
+        # Walk every branch, local and remote, so work done outside the checked-out
+        # branch is reported. Not `all=True`: that also walks refs/stash, which would
+        # report stashed work-in-progress as completed work.
+        for commit in self.repo.iter_commits(
+            branches=True, remotes=True, since=since_date
+        ):
             # Exclude merge commits
             if len(commit.parents) > 1:
                 continue
@@ -33,10 +40,16 @@ class GitDataCollector:
 
         return commits
 
+    def _get_empty_tree_sha(self) -> str:
+        """Return this repo's empty tree hash, the diff base for an initial commit."""
+        if self._empty_tree_sha is None:
+            self._empty_tree_sha = self.repo.git.hash_object("-t", "tree", os.devnull)
+        return self._empty_tree_sha
+
     def get_commit_diff(self, commit_id: str) -> str:
         """Return the diff information for a specific commit."""
         commit = self.repo.commit(commit_id)
         if len(commit.parents) > 0:
             return self.repo.git.diff(commit.parents[0], commit)
         else:
-            return self.repo.git.diff(git.NULL_TREE, commit)
+            return self.repo.git.diff(self._get_empty_tree_sha(), commit)

@@ -1,8 +1,23 @@
+import re
 from typing import List, Dict, Any, Optional
 
 from weekly_report_prompt.config_loader import ConfigLoader
 from weekly_report_prompt.schemas import CommitData
 import tiktoken
+
+# Used when tiktoken cannot load its encoding; roughly right for English prose and code.
+CHARS_PER_TOKEN = 4
+
+
+def fenced(content: str, info: str = "") -> str:
+    """Wrap content in a code fence.
+
+    Reports and templates are markdown and may contain fences of their own, so the
+    fence has to be longer than the longest run of backticks inside the content.
+    """
+    longest_run = max((len(run) for run in re.findall(r"`+", content)), default=0)
+    ticks = "`" * max(3, longest_run + 1)
+    return f"{ticks}{info}\n{content}\n{ticks}"
 
 
 class PromptGenerator:
@@ -85,19 +100,20 @@ class PromptGenerator:
             template_section = [
                 "## 📑 Template",
                 "Below is the template to use for the report. Please refer to this template to maintain a consistent format.",
-                "```text",
-                self.template.strip(),
-                "```",
+                fenced(self.template.strip(), "text"),
             ]
             prompt_sections.append("\n".join(template_section))
         if self.previous_reports:
+            # Each report is a whole markdown document, so it gets its own fence rather
+            # than being flattened into a list item that mangles its headings and bullets.
             previous_reports_section = [
                 "## 📜 Previous Weekly Reports",
-                "Below are the contents of previous weekly reports. Please refer to these to maintain consistency and avoid duplication.",
+                "Below are the contents of previous weekly reports, newest first. Please refer to these to maintain consistency and avoid duplication.",
             ]
-            for report in self.previous_reports:
-                previous_reports_section.append(f"- {report}")
-            prompt_sections.append("\n".join(previous_reports_section))
+            previous_reports_section.extend(
+                fenced(report.strip(), "markdown") for report in self.previous_reports
+            )
+            prompt_sections.append("\n\n".join(previous_reports_section))
 
         if self.memo:
             memo_section = [
@@ -163,6 +179,13 @@ class PromptGenerator:
         return "\n\n".join(prompt_sections)
 
     def count_approximate_tokens(self, text: str, model: str = "gpt-4") -> int:
-        """Calculate the approximate number of tokens in the given string."""
-        encoding = tiktoken.encoding_for_model(model)
+        """Calculate the approximate number of tokens in the given string.
+
+        tiktoken downloads its encoding on first use. The count is advisory — it only
+        drives a warning — so an offline run estimates instead of failing outright.
+        """
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except Exception:
+            return len(text) // CHARS_PER_TOKEN
         return len(encoding.encode(text))
