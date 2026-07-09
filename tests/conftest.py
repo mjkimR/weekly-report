@@ -21,9 +21,7 @@ def sample_config():
     """Provide sample configuration data."""
     return {
         "author": "Test Author",
-        "repository": [
-            {"name": "test-repo", "path": "/path/to/repo"}
-        ],
+        "repository": ["/path/to/repo"],
         "max_diff_lines": 25,
         "lang": "ko",
         "report_history_limit": 10
@@ -84,7 +82,7 @@ def sample_commit_data():
         stats=CommitStats(
             insertions=15,
             deletions=5,
-            files=3
+            changed_files=["a.py", "b.py", "c.py"]
         ),
         diff="@@ -1,3 +1,3 @@\n-old line\n+new line"
     )
@@ -108,6 +106,7 @@ def mock_git_repo():
         "deletions": 5,
         "files": 3
     }
+    mock_commit.stats.files = {"a.py": {}, "b.py": {}, "c.py": {}}
 
     mock_repo.iter_commits.return_value = [mock_commit]
     mock_repo.commit.return_value = mock_commit

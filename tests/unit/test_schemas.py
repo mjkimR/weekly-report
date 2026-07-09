@@ -2,7 +2,19 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
-from weekly_report_prompt.schemas import CommitData, CommitStats, CommitDataSummary
+from weekly_report_prompt.schemas import AppConfig, CommitData, CommitStats, CommitDataSummary
+
+
+class TestAppConfig:
+    """Test cases for AppConfig model."""
+
+    def test_the_default_large_prompt_threshold_can_actually_fire(self):
+        """A real prompt runs ~30k tokens; the old hard-coded 1_000_000 never warned.
+
+        The value is advisory and configurable -- this only pins the default to
+        something a prompt can plausibly reach.
+        """
+        assert AppConfig(author="Test Author").large_prompt_tokens <= 200_000
 
 
 class TestCommitStats:
@@ -10,16 +22,16 @@ class TestCommitStats:
 
     def test_commit_stats_creation(self):
         """Test creating CommitStats with valid data."""
-        stats = CommitStats(insertions=10, deletions=5, files=3)
+        stats = CommitStats(insertions=10, deletions=5, changed_files=["a.py", "b.py"])
 
         assert stats.insertions == 10
         assert stats.deletions == 5
-        assert stats.files == 3
+        assert stats.changed_files == ["a.py", "b.py"]
 
     def test_commit_stats_validation(self):
         """Test CommitStats validation with invalid data."""
         with pytest.raises(ValueError):
-            CommitStats(insertions="invalid", deletions=5, files=3)
+            CommitStats(insertions="invalid", deletions=5, changed_files=[])
 
 
 class TestCommitData:
@@ -35,7 +47,7 @@ class TestCommitData:
         assert commit.message == "Add new feature\n\nDetailed description of the feature"
         assert commit.stats.insertions == 15
         assert commit.stats.deletions == 5
-        assert commit.stats.files == 3
+        assert commit.stats.changed_files == ["a.py", "b.py", "c.py"]
         assert commit.diff == "@@ -1,3 +1,3 @@\n-old line\n+new line"
 
     def test_from_commit_class_method(self):
@@ -50,8 +62,10 @@ class TestCommitData:
         mock_commit.stats.total = {
             "insertions": 20,
             "deletions": 10,
-            "files": 5
+            "files": 2
         }
+        # GitPython keys this dict by path; the summary needs the paths, not the count.
+        mock_commit.stats.files = {"src/b.py": {}, "src/a.py": {}}
 
         diff_content = "sample diff content"
 
@@ -63,7 +77,7 @@ class TestCommitData:
         assert commit_data.message == "Test commit message"  # Whitespace should be stripped
         assert commit_data.stats.insertions == 20
         assert commit_data.stats.deletions == 10
-        assert commit_data.stats.files == 5
+        assert commit_data.stats.changed_files == ["src/a.py", "src/b.py"]
         assert commit_data.diff == "sample diff content"
 
 

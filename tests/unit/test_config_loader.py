@@ -1,6 +1,7 @@
 import pytest
 import os
 import yaml
+from pydantic import ValidationError
 
 from weekly_report_prompt.config_loader import ConfigLoader
 
@@ -11,7 +12,7 @@ class TestConfigLoader:
     def test_config_loader_initialization(self, config_loader):
         """Test ConfigLoader initialization with valid files."""
         assert config_loader is not None
-        assert config_loader.config is not None
+        assert config_loader.settings is not None
         assert config_loader.template is not None
 
     def test_config_loader_with_missing_config_file(self, template_file):
@@ -24,22 +25,35 @@ class TestConfigLoader:
         with pytest.raises(FileNotFoundError, match="Template file not found"):
             ConfigLoader(config_path=config_file, template_path="/nonexistent/template.md")
 
-    def test_get_method(self, config_loader):
-        """Test the generic get method."""
-        assert config_loader.get("author") == "Test Author"
-        assert config_loader.get("nonexistent_key") is None
-        assert config_loader.get("nonexistent_key", "default_value") == "default_value"
-
     def test_get_author(self, config_loader):
         """Test getting author from config."""
         assert config_loader.get_author() == "Test Author"
 
     def test_get_repositories(self, config_loader):
         """Test getting repositories from config."""
-        repos = config_loader.get_repositories()
-        assert len(repos) == 1
-        assert repos[0]["name"] == "test-repo"
-        assert repos[0]["path"] == "/path/to/repo"
+        assert config_loader.get_repositories() == ["/path/to/repo"]
+
+    def test_repository_must_be_a_list_of_paths(self, temp_dir):
+        """A mis-shaped repository entry fails at load time, not deep inside main()."""
+        config_dir = os.path.join(temp_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+
+        config_path = os.path.join(config_dir, "config.yaml")
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(
+                {
+                    "author": "Test Author",
+                    "repository": [{"name": "test-repo", "path": "/path/to/repo"}],
+                },
+                f,
+            )
+
+        template_path = os.path.join(config_dir, "template.md")
+        with open(template_path, "w", encoding="utf-8") as f:
+            f.write("# Template")
+
+        with pytest.raises(ValidationError):
+            ConfigLoader(config_path=config_path, template_path=template_path)
 
     def test_get_max_diff_lines(self, config_loader):
         """Test getting max diff lines from config."""
@@ -84,6 +98,26 @@ class TestConfigLoader:
 
         loader = ConfigLoader(config_path=config_path, template_path=template_path)
         assert loader.get_lang() == "ko"  # Default value
+
+    def test_get_large_prompt_tokens_default(self, config_loader):
+        """The sample config omits the key, so the default applies."""
+        assert config_loader.get_large_prompt_tokens() == 150_000
+
+    def test_get_large_prompt_tokens_from_config(self, temp_dir):
+        """Whoever pastes the prompt into a 1M-token model can say so."""
+        config_dir = os.path.join(temp_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+
+        config_path = os.path.join(config_dir, "config.yaml")
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump({"author": "Test Author", "large_prompt_tokens": 900_000}, f)
+
+        template_path = os.path.join(config_dir, "template.md")
+        with open(template_path, "w", encoding="utf-8") as f:
+            f.write("# Template")
+
+        loader = ConfigLoader(config_path=config_path, template_path=template_path)
+        assert loader.get_large_prompt_tokens() == 900_000
 
     def test_get_report_history_limit(self, config_loader):
         """Test getting report history limit from config."""

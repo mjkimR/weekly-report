@@ -2,8 +2,23 @@ import pytest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
-from weekly_report_prompt.prompt_generator import PromptGenerator
+from weekly_report_prompt.prompt_generator import PromptGenerator, fenced
 from weekly_report_prompt.schemas import CommitData, CommitStats, CommitDataSummary
+
+
+class TestFenced:
+    """Test cases for the fenced() helper."""
+
+    def test_plain_content_gets_a_three_backtick_fence(self):
+        assert fenced("hello", "markdown") == "```markdown\nhello\n```"
+
+    def test_inline_code_does_not_grow_the_fence(self):
+        assert fenced("use `x` here") == "```\nuse `x` here\n```"
+
+    def test_the_fence_outgrows_the_longest_run_inside_the_content(self):
+        """A fence no longer than the content's own would end the block early."""
+        assert fenced("a ``` b", "md") == "````md\na ``` b\n````"
+        assert fenced("a ````` b", "md") == "``````md\na ````` b\n``````"
 
 
 class TestPromptGenerator:
@@ -92,7 +107,7 @@ class TestPromptGenerator:
             email="test@example.com",
             date=datetime(2025, 9, 15, tzinfo=timezone.utc),
             message="Test commit",
-            stats=CommitStats(insertions=50, deletions=0, files=1),
+            stats=CommitStats(insertions=50, deletions=0, changed_files=["big.py"]),
             diff=long_diff
         )
 
@@ -117,7 +132,7 @@ class TestPromptGenerator:
             email="test@example.com",
             date=datetime(2025, 9, 16, tzinfo=timezone.utc),
             message="Fix bug",
-            stats=CommitStats(insertions=5, deletions=2, files=1),
+            stats=CommitStats(insertions=5, deletions=2, changed_files=["bug.py"]),
             diff="@@ -5,1 +5,1 @@\n-old bug\n+fixed bug"
         )
 
@@ -163,6 +178,42 @@ class TestPromptGenerator:
         assert "## 📜 Previous Weekly Reports" in prompt
         assert "Previous report 1" in prompt
         assert "Previous report 2" in prompt
+
+    def test_previous_reports_are_fenced_rather_than_flattened(self, sample_project_data, config_loader):
+        """A report is a markdown document, not a bullet.
+
+        The old code emitted `- {report}`, which indented only the first line and left
+        the report's own headings and bullets to run together with the prompt's.
+        """
+        report = "# Week of 6/25\n\n## Done\n\n* shipped the thing\n* fixed the bug"
+        generator = PromptGenerator(
+            sample_project_data, config_loader, previous_reports=[report]
+        )
+
+        prompt = generator.generate_prompt()
+
+        assert f"```markdown\n{report}\n```" in prompt
+        assert "- # Week of 6/25" not in prompt
+
+    def test_a_report_containing_a_fence_stays_inside_its_own_fence(self, sample_project_data, config_loader):
+        """Reports quote code, so the wrapping fence has to be longer than theirs."""
+        report = "# Week\n\n```python\nprint('hi')\n```"
+        generator = PromptGenerator(
+            sample_project_data, config_loader, previous_reports=[report]
+        )
+
+        prompt = generator.generate_prompt()
+
+        assert f"````markdown\n{report}\n````" in prompt
+
+    def test_each_previous_report_gets_its_own_fence(self, sample_project_data, config_loader):
+        generator = PromptGenerator(
+            sample_project_data, config_loader, previous_reports=["# a", "# b"]
+        )
+
+        prompt = generator.generate_prompt()
+
+        assert "```markdown\n# a\n```\n\n```markdown\n# b\n```" in prompt
 
     def test_generate_prompt_with_memo(self, sample_project_data, config_loader):
         """Test generating prompt with memo."""
@@ -259,6 +310,17 @@ class TestPromptGenerator:
         assert token_count == 5
         mock_tiktoken.encoding_for_model.assert_called_once_with("gpt-4")
         mock_encoding.encode.assert_called_once_with("test text")
+
+    @patch('weekly_report_prompt.prompt_generator.tiktoken')
+    def test_count_approximate_tokens_estimates_when_the_encoding_will_not_load(
+        self, mock_tiktoken, config_loader
+    ):
+        """tiktoken downloads on first use; an offline run must not lose the prompt."""
+        mock_tiktoken.encoding_for_model.side_effect = ConnectionError("offline")
+
+        generator = PromptGenerator([], config_loader)
+
+        assert generator.count_approximate_tokens("a" * 400) == 100
 
     def test_generate_prompt_language_instruction(self, sample_project_data, config_loader):
         """Test that language instruction is included in prompt."""

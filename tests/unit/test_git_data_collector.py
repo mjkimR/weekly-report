@@ -1,7 +1,5 @@
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import Mock, patch, MagicMock
-import git
+from unittest.mock import Mock, patch
 
 from weekly_report_prompt.git_data_collector import GitDataCollector
 from weekly_report_prompt.schemas import CommitData
@@ -22,7 +20,7 @@ class TestGitDataCollector:
     def test_initialization_default_repo_path(self, config_loader):
         """Test GitDataCollector initialization with default repo path."""
         with patch('weekly_report_prompt.git_data_collector.git.Repo') as mock_repo:
-            collector = GitDataCollector(config_loader)
+            GitDataCollector(config_loader)
 
             mock_repo.assert_called_once_with(".")
 
@@ -40,6 +38,7 @@ class TestGitDataCollector:
         mock_commit1.author.email = "test@example.com"
         mock_commit1.parents = []  # Not a merge commit
         mock_commit1.stats.total = {"insertions": 10, "deletions": 5, "files": 2}
+        mock_commit1.stats.files = {"a.py": {}, "b.py": {}}
         mock_commit1.committed_datetime = datetime(2025, 9, 15, tzinfo=timezone.utc)
         mock_commit1.message = "Test commit"
 
@@ -69,7 +68,10 @@ class TestGitDataCollector:
         assert commits[0].id == "abc123"
         assert commits[0].author == "Test Author"
 
-        mock_repo.iter_commits.assert_called_once_with(since=since_date)
+        # branches/remotes, never all=True: `--all` would also walk refs/stash.
+        mock_repo.iter_commits.assert_called_once_with(
+            branches=True, remotes=True, since=since_date
+        )
 
     @patch('weekly_report_prompt.git_data_collector.git.Repo')
     def test_get_commit_diff_with_parents(self, mock_repo_class, config_loader):
@@ -93,9 +95,10 @@ class TestGitDataCollector:
         mock_repo.git.diff.assert_called_once_with(mock_parent, mock_commit)
 
     @patch('weekly_report_prompt.git_data_collector.git.Repo')
-    @patch('weekly_report_prompt.git_data_collector.git.NULL_TREE')
-    def test_get_commit_diff_without_parents(self, mock_null_tree, mock_repo_class, config_loader):
-        """Test getting diff for commit without parents (initial commit)."""
+    def test_get_commit_diff_without_parents(self, mock_repo_class, config_loader):
+        """An initial commit is diffed against the empty tree hash."""
+        empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
         mock_repo = Mock()
         mock_repo_class.return_value = mock_repo
 
@@ -104,6 +107,7 @@ class TestGitDataCollector:
         mock_commit.parents = []
 
         mock_repo.commit.return_value = mock_commit
+        mock_repo.git.hash_object.return_value = empty_tree
         mock_repo.git.diff.return_value = "initial commit diff"
 
         collector = GitDataCollector(config_loader)
@@ -111,7 +115,7 @@ class TestGitDataCollector:
 
         assert diff == "initial commit diff"
         mock_repo.commit.assert_called_once_with("abc123")
-        mock_repo.git.diff.assert_called_once_with(mock_null_tree, mock_commit)
+        mock_repo.git.diff.assert_called_once_with(empty_tree, mock_commit)
 
     @patch('weekly_report_prompt.git_data_collector.git.Repo')
     def test_collect_commits_empty_result(self, mock_repo_class, config_loader):
@@ -155,6 +159,7 @@ class TestGitDataCollector:
             "deletions": 5,
             "files": 3
         }
+        mock_commit.stats.files = {"c.py": {}, "a.py": {}, "b.py": {}}
 
         mock_repo.iter_commits.return_value = [mock_commit]
 
@@ -176,5 +181,5 @@ class TestGitDataCollector:
         assert commit_data.message == "Add new feature\n\nDetailed description"
         assert commit_data.stats.insertions == 15
         assert commit_data.stats.deletions == 5
-        assert commit_data.stats.files == 3
+        assert commit_data.stats.changed_files == ["a.py", "b.py", "c.py"]
         assert commit_data.diff == "test diff content"

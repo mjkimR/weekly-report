@@ -10,14 +10,18 @@ class TestSummarizeCommitData:
     """Test cases for summarize_commit_data function."""
 
     def test_summarize_commit_data_with_commits(self, sample_commit_data):
-        """Test summarizing commit data with actual commits."""
+        """Test summarizing commit data with actual commits.
+
+        sample_commit_data touches a.py, b.py and c.py; commit2 touches a.py again.
+        Four file-changes, but only three files changed.
+        """
         commit2 = CommitData(
             id="def456ghi789",
             author="Test Author",
             email="test@example.com",
             date=datetime(2025, 9, 16, tzinfo=timezone.utc),
             message="Fix bug",
-            stats=CommitStats(insertions=5, deletions=2, files=1),
+            stats=CommitStats(insertions=5, deletions=2, changed_files=["a.py"]),
             diff="test diff"
         )
 
@@ -30,7 +34,7 @@ class TestSummarizeCommitData:
         assert summary.total_commits == 2
         assert summary.total_insertions == 20  # 15 + 5
         assert summary.total_deletions == 7   # 5 + 2
-        assert summary.total_files_changed == 4  # 3 + 1
+        assert summary.total_files_changed == 3  # a.py counted once, not twice
 
     def test_summarize_commit_data_empty_list(self):
         """Test summarizing empty commit data."""
@@ -82,6 +86,7 @@ class TestMain:
 
         mock_config = Mock()
         mock_config.get_repositories.return_value = ["/path/to/repo1", "/path/to/repo2"]
+        mock_config.get_large_prompt_tokens.return_value = 150_000
         mock_config_class.return_value = mock_config
 
         mock_file_mgr = Mock()
@@ -101,11 +106,13 @@ class TestMain:
         mock_prompt_gen_class.return_value = mock_prompt_gen
 
         # Execute main function
-        main()
+        main([])
 
         # Verify initialization calls
         mock_config_class.assert_called_once()
-        mock_file_mgr_class.assert_called_once_with(config_loader=mock_config)
+        mock_file_mgr_class.assert_called_once_with(
+            config_loader=mock_config, build_dir=None
+        )
 
         # Verify file management calls
         mock_file_mgr.clear_previous_prompts.assert_called_once()
@@ -146,6 +153,7 @@ class TestMain:
 
         mock_config = Mock()
         mock_config.get_repositories.return_value = ["/path/to/repo"]
+        mock_config.get_large_prompt_tokens.return_value = 150_000
         mock_config_class.return_value = mock_config
 
         mock_file_mgr = Mock()
@@ -175,7 +183,7 @@ class TestMain:
                 with patch('weekly_report_prompt.main.timedelta') as mock_timedelta:
                     mock_timedelta.return_value = mock_now - expected_date
 
-                    main()
+                    main([])
 
         # Verify that git collector was called with date from 7 days ago
         expected_date = datetime(2025, 9, 10, 0, 0, 0)
@@ -199,6 +207,7 @@ class TestMain:
 
         mock_config = Mock()
         mock_config.get_repositories.return_value = ["/path/to/repo"]
+        mock_config.get_large_prompt_tokens.return_value = 150_000
         mock_config_class.return_value = mock_config
 
         mock_file_mgr = Mock()
@@ -211,9 +220,68 @@ class TestMain:
         mock_git_collector.collect_commits.return_value = []  # No commits
         mock_git_collector_class.return_value = mock_git_collector
 
-        # Should raise ValueError when no commits found
-        with pytest.raises(ValueError, match="No commits found in the specified period"):
-            main()
+        # Should exit non-zero when no commits found
+        with pytest.raises(SystemExit) as exc_info:
+            main([])
+
+        assert exc_info.value.code == 1
+
+        # ...and must not have touched the build directory on the way out.
+        mock_file_mgr.clear_previous_prompts.assert_not_called()
+        mock_file_mgr.move_previous_reports.assert_not_called()
+        mock_file_mgr.save_prompt.assert_not_called()
+        mock_file_mgr.create_report_file.assert_not_called()
+
+    @patch('weekly_report_prompt.main.Console')
+    @patch('weekly_report_prompt.main.ConfigLoader')
+    @patch('weekly_report_prompt.main.ReportFileManager')
+    @patch('weekly_report_prompt.main.GitDataCollector')
+    @patch('weekly_report_prompt.main.PromptGenerator')
+    def test_main_function_dry_run_writes_nothing(
+        self,
+        mock_prompt_gen_class,
+        mock_git_collector_class,
+        mock_file_mgr_class,
+        mock_config_class,
+        mock_console_class,
+        sample_commit_data
+    ):
+        """--dry-run still builds the prompt, but calls nothing that writes."""
+        mock_console_class.return_value = Mock()
+
+        mock_config = Mock()
+        mock_config.get_repositories.return_value = ["/path/to/repo"]
+        mock_config.get_large_prompt_tokens.return_value = 150_000
+        mock_config_class.return_value = mock_config
+
+        mock_file_mgr = Mock()
+        mock_file_mgr.get_last_report_date.return_value = datetime(2025, 9, 10, tzinfo=timezone.utc)
+        mock_file_mgr.fetch_report_history.return_value = []
+        mock_file_mgr.fetch_memo.return_value = None
+        mock_file_mgr.previous_prompt_files.return_value = ["/build/prompt-old.md"]
+        mock_file_mgr.pending_report_files.return_value = ["/build/report-old.md"]
+        mock_file_mgr_class.return_value = mock_file_mgr
+
+        mock_git_collector = Mock()
+        mock_git_collector.collect_commits.return_value = [sample_commit_data]
+        mock_git_collector_class.return_value = mock_git_collector
+
+        mock_prompt_gen = Mock()
+        mock_prompt_gen.generate_prompt.return_value = "Generated prompt"
+        mock_prompt_gen.count_approximate_tokens.return_value = 1000
+        mock_prompt_gen_class.return_value = mock_prompt_gen
+
+        main(["--dry-run"])
+
+        # The prompt is still built, so the user sees what they would get...
+        mock_prompt_gen.generate_prompt.assert_called_once()
+
+        # ...but nothing reaches the disk.
+        mock_file_mgr.clear_previous_prompts.assert_not_called()
+        mock_file_mgr.move_previous_reports.assert_not_called()
+        mock_file_mgr.save_prompt.assert_not_called()
+        mock_file_mgr.create_report_file.assert_not_called()
+        mock_file_mgr.ensure_memo_file.assert_not_called()
 
     @patch('weekly_report_prompt.main.Console')
     @patch('weekly_report_prompt.main.ConfigLoader')
@@ -236,6 +304,7 @@ class TestMain:
 
         mock_config = Mock()
         mock_config.get_repositories.return_value = ["/path/to/repo"]
+        mock_config.get_large_prompt_tokens.return_value = 1000
         mock_config_class.return_value = mock_config
 
         mock_file_mgr = Mock()
@@ -251,15 +320,60 @@ class TestMain:
 
         mock_prompt_gen = Mock()
         mock_prompt_gen.generate_prompt.return_value = "Generated prompt"
-        mock_prompt_gen.count_approximate_tokens.return_value = 1500000  # Large token count
+        mock_prompt_gen.count_approximate_tokens.return_value = 1001
         mock_prompt_gen_class.return_value = mock_prompt_gen
 
-        main()
+        main([])
 
         # Verify warning was printed (check console.print calls)
         warning_calls = [call for call in mock_console.print.call_args_list
                         if len(call[0]) > 0 and "very large" in str(call[0][0])]
         assert len(warning_calls) > 0
+
+    @patch('weekly_report_prompt.main.Console')
+    @patch('weekly_report_prompt.main.ConfigLoader')
+    @patch('weekly_report_prompt.main.ReportFileManager')
+    @patch('weekly_report_prompt.main.GitDataCollector')
+    @patch('weekly_report_prompt.main.PromptGenerator')
+    def test_main_function_no_warning_at_the_configured_threshold(
+        self,
+        mock_prompt_gen_class,
+        mock_git_collector_class,
+        mock_file_mgr_class,
+        mock_config_class,
+        mock_console_class,
+        sample_commit_data
+    ):
+        """The threshold comes from config, and a prompt exactly at it does not warn."""
+        mock_console = Mock()
+        mock_console_class.return_value = mock_console
+
+        mock_config = Mock()
+        mock_config.get_repositories.return_value = ["/path/to/repo"]
+        mock_config.get_large_prompt_tokens.return_value = 1000
+        mock_config_class.return_value = mock_config
+
+        mock_file_mgr = Mock()
+        mock_file_mgr.get_last_report_date.return_value = datetime(2025, 9, 10, tzinfo=timezone.utc)
+        mock_file_mgr.fetch_report_history.return_value = []
+        mock_file_mgr.fetch_memo.return_value = None
+        mock_file_mgr.prompt_file_path = "/path/to/prompt.md"
+        mock_file_mgr_class.return_value = mock_file_mgr
+
+        mock_git_collector = Mock()
+        mock_git_collector.collect_commits.return_value = [sample_commit_data]
+        mock_git_collector_class.return_value = mock_git_collector
+
+        mock_prompt_gen = Mock()
+        mock_prompt_gen.generate_prompt.return_value = "Generated prompt"
+        mock_prompt_gen.count_approximate_tokens.return_value = 1000
+        mock_prompt_gen_class.return_value = mock_prompt_gen
+
+        main([])
+
+        warning_calls = [call for call in mock_console.print.call_args_list
+                        if len(call[0]) > 0 and "very large" in str(call[0][0])]
+        assert warning_calls == []
 
     @patch('weekly_report_prompt.main.Console')
     @patch('weekly_report_prompt.main.ConfigLoader')
@@ -286,6 +400,7 @@ class TestMain:
             "/path/to/repo2",
             "/path/to/repo3"
         ]
+        mock_config.get_large_prompt_tokens.return_value = 150_000
         mock_config_class.return_value = mock_config
 
         mock_file_mgr = Mock()
@@ -304,7 +419,7 @@ class TestMain:
         mock_prompt_gen.count_approximate_tokens.return_value = 1000
         mock_prompt_gen_class.return_value = mock_prompt_gen
 
-        main()
+        main([])
 
         # Verify GitDataCollector was created for each repository
         assert mock_git_collector_class.call_count == 3
