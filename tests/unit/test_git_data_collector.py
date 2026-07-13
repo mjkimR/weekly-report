@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 from weekly_report_prompt.git_data_collector import GitDataCollector
@@ -10,7 +10,7 @@ class TestGitDataCollector:
 
     def test_initialization(self, config_loader):
         """Test GitDataCollector initialization."""
-        with patch('weekly_report_prompt.git_data_collector.git.Repo') as mock_repo:
+        with patch("weekly_report_prompt.git_data_collector.git.Repo") as mock_repo:
             collector = GitDataCollector(config_loader, "/test/repo/path")
 
             assert collector.config_loader == config_loader
@@ -19,12 +19,12 @@ class TestGitDataCollector:
 
     def test_initialization_default_repo_path(self, config_loader):
         """Test GitDataCollector initialization with default repo path."""
-        with patch('weekly_report_prompt.git_data_collector.git.Repo') as mock_repo:
+        with patch("weekly_report_prompt.git_data_collector.git.Repo") as mock_repo:
             GitDataCollector(config_loader)
 
             mock_repo.assert_called_once_with(".")
 
-    @patch('weekly_report_prompt.git_data_collector.git.Repo')
+    @patch("weekly_report_prompt.git_data_collector.git.Repo")
     def test_collect_commits(self, mock_repo_class, config_loader):
         """Test collecting commits from repository."""
         # Setup mock repository
@@ -39,7 +39,7 @@ class TestGitDataCollector:
         mock_commit1.parents = []  # Not a merge commit
         mock_commit1.stats.total = {"insertions": 10, "deletions": 5, "files": 2}
         mock_commit1.stats.files = {"a.py": {}, "b.py": {}}
-        mock_commit1.committed_datetime = datetime(2025, 9, 15, tzinfo=timezone.utc)
+        mock_commit1.committed_datetime = datetime(2025, 9, 15, tzinfo=UTC)
         mock_commit1.message = "Test commit"
 
         mock_commit2 = Mock()
@@ -59,8 +59,8 @@ class TestGitDataCollector:
         collector = GitDataCollector(config_loader)
 
         # Mock get_commit_diff method
-        with patch.object(collector, 'get_commit_diff', return_value="test diff"):
-            since_date = datetime(2025, 9, 10, tzinfo=timezone.utc)
+        with patch.object(collector, "get_commit_diff", return_value="test diff"):
+            since_date = datetime(2025, 9, 10, tzinfo=UTC)
             commits = collector.collect_commits(since_date)
 
         # Should only return commit1 (matching author, not merge commit)
@@ -69,11 +69,9 @@ class TestGitDataCollector:
         assert commits[0].author == "Test Author"
 
         # branches/remotes, never all=True: `--all` would also walk refs/stash.
-        mock_repo.iter_commits.assert_called_once_with(
-            branches=True, remotes=True, since=since_date
-        )
+        mock_repo.iter_commits.assert_called_once_with(branches=True, remotes=True, since=since_date)
 
-    @patch('weekly_report_prompt.git_data_collector.git.Repo')
+    @patch("weekly_report_prompt.git_data_collector.git.Repo")
     def test_get_commit_diff_with_parents(self, mock_repo_class, config_loader):
         """Test getting diff for commit with parents."""
         mock_repo = Mock()
@@ -94,7 +92,7 @@ class TestGitDataCollector:
         mock_repo.commit.assert_called_once_with("abc123")
         mock_repo.git.diff.assert_called_once_with(mock_parent, mock_commit)
 
-    @patch('weekly_report_prompt.git_data_collector.git.Repo')
+    @patch("weekly_report_prompt.git_data_collector.git.Repo")
     def test_get_commit_diff_without_parents(self, mock_repo_class, config_loader):
         """An initial commit is diffed against the empty tree hash."""
         empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -117,7 +115,7 @@ class TestGitDataCollector:
         mock_repo.commit.assert_called_once_with("abc123")
         mock_repo.git.diff.assert_called_once_with(empty_tree, mock_commit)
 
-    @patch('weekly_report_prompt.git_data_collector.git.Repo')
+    @patch("weekly_report_prompt.git_data_collector.git.Repo")
     def test_collect_commits_empty_result(self, mock_repo_class, config_loader):
         """Test collecting commits when no commits match criteria."""
         mock_repo = Mock()
@@ -135,12 +133,12 @@ class TestGitDataCollector:
         mock_repo.iter_commits.return_value = [mock_commit1, mock_commit2]
 
         collector = GitDataCollector(config_loader)
-        since_date = datetime(2025, 9, 10, tzinfo=timezone.utc)
+        since_date = datetime(2025, 9, 10, tzinfo=UTC)
         commits = collector.collect_commits(since_date)
 
         assert len(commits) == 0
 
-    @patch('weekly_report_prompt.git_data_collector.git.Repo')
+    @patch("weekly_report_prompt.git_data_collector.git.Repo")
     def test_collect_commits_integration_with_commit_data(self, mock_repo_class, config_loader):
         """Test that collect_commits properly creates CommitData objects."""
         mock_repo = Mock()
@@ -151,14 +149,10 @@ class TestGitDataCollector:
         mock_commit.hexsha = "abc123def456"
         mock_commit.author.name = "Test Author"
         mock_commit.author.email = "test@example.com"
-        mock_commit.committed_datetime = datetime(2025, 9, 15, 10, 30, 0, tzinfo=timezone.utc)
+        mock_commit.committed_datetime = datetime(2025, 9, 15, 10, 30, 0, tzinfo=UTC)
         mock_commit.message = "Add new feature\n\nDetailed description"
         mock_commit.parents = []
-        mock_commit.stats.total = {
-            "insertions": 15,
-            "deletions": 5,
-            "files": 3
-        }
+        mock_commit.stats.total = {"insertions": 15, "deletions": 5, "files": 3}
         mock_commit.stats.files = {"c.py": {}, "a.py": {}, "b.py": {}}
 
         mock_repo.iter_commits.return_value = [mock_commit]
@@ -166,8 +160,8 @@ class TestGitDataCollector:
         collector = GitDataCollector(config_loader)
 
         # Mock get_commit_diff
-        with patch.object(collector, 'get_commit_diff', return_value="test diff content"):
-            since_date = datetime(2025, 9, 10, tzinfo=timezone.utc)
+        with patch.object(collector, "get_commit_diff", return_value="test diff content"):
+            since_date = datetime(2025, 9, 10, tzinfo=UTC)
             commits = collector.collect_commits(since_date)
 
         assert len(commits) == 1

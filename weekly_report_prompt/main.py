@@ -1,15 +1,16 @@
 import argparse
+from datetime import datetime, timedelta
 
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
+from weekly_report_prompt.config_loader import ConfigLoader
 from weekly_report_prompt.git_data_collector import GitDataCollector
 from weekly_report_prompt.prompt_generator import PromptGenerator
 from weekly_report_prompt.report_file_manager import ReportFileManager
 from weekly_report_prompt.schemas import CommitDataSummary
-from datetime import datetime, timedelta
-from weekly_report_prompt.config_loader import ConfigLoader
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
-from rich.table import Table
 
 
 def parse_args(argv=None):
@@ -50,9 +51,7 @@ def summarize_commit_data(commits):
         total_insertions=sum(commit.stats.insertions for commit in commits),
         total_deletions=sum(commit.stats.deletions for commit in commits),
         # A file touched by three commits is one changed file, not three.
-        total_files_changed=len(
-            {path for commit in commits for path in commit.stats.changed_files}
-        ),
+        total_files_changed=len({path for commit in commits for path in commit.stats.changed_files}),
     )
 
 
@@ -71,9 +70,7 @@ def main(argv=None):
 
     # Initialize components
     console.print("Initializing configuration...")
-    config = ConfigLoader(
-        config_path=args.config_path, template_path=args.template_path
-    )
+    config = ConfigLoader(config_path=args.config_path, template_path=args.template_path)
     repo_paths = config.get_repositories()
     file_mgr = ReportFileManager(config_loader=config, build_dir=args.build_dir)
 
@@ -87,21 +84,13 @@ def main(argv=None):
     console.print("Determining report date range...")
     last_report_date = file_mgr.get_last_report_date()
     if not last_report_date:
-        console.print(
-            "[yellow]⚠️  No previous report found. Collecting commits from the last 7 days.[/yellow]"
-        )
-        last_report_date = (datetime.now() - timedelta(days=7)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        console.print("[yellow]⚠️  No previous report found. Collecting commits from the last 7 days.[/yellow]")
+        last_report_date = (datetime.now() - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
     else:
-        console.print(
-            f"[green]📅 Using last report date: {last_report_date.strftime('%Y-%m-%d %H:%M:%S')}[/green]"
-        )
+        console.print(f"[green]📅 Using last report date: {last_report_date.strftime('%Y-%m-%d %H:%M:%S')}[/green]")
 
     # Display the actual reference period
-    console.print(
-        f"[cyan]📊 Data collection period: {last_report_date.strftime('%Y-%m-%d %H:%M:%S')} ~ Now [/cyan]"
-    )
+    console.print(f"[cyan]📊 Data collection period: {last_report_date.strftime('%Y-%m-%d %H:%M:%S')} ~ Now [/cyan]")
 
     # Collect data from repositories
     console.print("Collecting commit data...")
@@ -127,16 +116,12 @@ def main(argv=None):
         # Show progress for each repository
         commit_count = len(recent_commits)
         if commit_count > 0:
-            console.print(
-                f"[green]✅ {project_name}: {commit_count} commits found[/green]"
-            )
+            console.print(f"[green]✅ {project_name}: {commit_count} commits found[/green]")
         else:
             console.print(f"[dim]⚪ {project_name}: No commits found[/dim]")
 
     # Create summary table
-    summary_table = Table(
-        title="Repository Summary", show_header=True, header_style="bold magenta"
-    )
+    summary_table = Table(title="Repository Summary", show_header=True, header_style="bold magenta")
     summary_table.add_column("Project", style="cyan")
     summary_table.add_column("Commits", justify="right", style="green")
     summary_table.add_column("Insertions", justify="right", style="green")

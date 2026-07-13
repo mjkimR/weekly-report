@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from weekly_report_prompt.config_loader import ConfigLoader
-from weekly_report_prompt.const import REPORT_BLANK_MESSAGE, MEMO_BLANK_MESSAGE
+from weekly_report_prompt.const import MEMO_BLANK_MESSAGE, REPORT_BLANK_MESSAGE
 
 REPORT_FILENAME_RE = re.compile(r"^report-(\d{8}-\d{6})\.md$")
 
@@ -71,9 +71,7 @@ class ReportFileManager:
             if self._is_blank_report(file_path):
                 os.remove(file_path)
             else:
-                dest_path = os.path.join(
-                    self.history_dir, os.path.basename(file_path)
-                )
+                dest_path = os.path.join(self.history_dir, os.path.basename(file_path))
                 os.rename(file_path, dest_path)
 
         # Clean up old history files if they exceed the limit
@@ -81,7 +79,7 @@ class ReportFileManager:
 
     @staticmethod
     def _is_blank_report(file_path):
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             return f.read().strip() == REPORT_BLANK_MESSAGE.strip()
 
     @staticmethod
@@ -90,20 +88,13 @@ class ReportFileManager:
 
         Paths that are not reports are dropped, so callers never have to filter first.
         """
-        entries = [
-            (date, path)
-            for path in paths
-            if (date := report_date(path)) is not None
-        ]
+        entries = [(date, path) for path in paths if (date := report_date(path)) is not None]
         entries.sort(key=lambda entry: entry[0], reverse=True)
         return entries
 
     def _history_entries(self):
         """Return (date, path) for every archived report, newest first."""
-        return self._entries(
-            os.path.join(self.history_dir, filename)
-            for filename in os.listdir(self.history_dir)
-        )
+        return self._entries(os.path.join(self.history_dir, filename) for filename in os.listdir(self.history_dir))
 
     def _report_entries(self):
         """Every report we know of, archived or not, newest first.
@@ -112,25 +103,21 @@ class ReportFileManager:
         it marks a period already reported on, so callers must not have to archive it
         first in order to see it. A blank one was never written, so it does not count.
         """
-        pending = self._entries(
-            path
-            for path in self.pending_report_files()
-            if not self._is_blank_report(path)
-        )
+        pending = self._entries(path for path in self.pending_report_files() if not self._is_blank_report(path))
         entries = self._history_entries() + pending
         entries.sort(key=lambda entry: entry[0], reverse=True)
         return entries
 
     def _cleanup_old_history_files(self):
         """Remove old history files that exceed the history limit."""
-        for _, file_path in self._history_entries()[self.history_limit:]:
+        for _, file_path in self._history_entries()[self.history_limit :]:
             os.remove(file_path)
 
     def fetch_report_history(self):
         """Return the contents of the most recent reports, newest first."""
         reports = []
         for _, file_path in self._report_entries()[: self.history_limit]:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 reports.append(f.read())
 
         return reports
@@ -151,7 +138,7 @@ class ReportFileManager:
         if not os.path.exists(memo_path):
             return None
 
-        with open(memo_path, "r", encoding="utf-8") as f:
+        with open(memo_path, encoding="utf-8") as f:
             memo = f.read().strip()
 
         if memo == MEMO_BLANK_MESSAGE.strip():

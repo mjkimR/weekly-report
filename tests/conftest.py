@@ -1,8 +1,9 @@
-import pytest
-import tempfile
 import os
-from datetime import datetime, timezone
+import tempfile
+from datetime import UTC, datetime
 from unittest.mock import Mock
+
+import pytest
 import yaml
 
 from weekly_report_prompt.config_loader import ConfigLoader
@@ -24,7 +25,7 @@ def sample_config():
         "repository": ["/path/to/repo"],
         "max_diff_lines": 25,
         "lang": "ko",
-        "report_history_limit": 10
+        "report_history_limit": 10,
     }
 
 
@@ -77,14 +78,10 @@ def sample_commit_data():
         id="abc123def456",
         author="Test Author",
         email="test@example.com",
-        date=datetime(2025, 9, 15, 10, 30, 0, tzinfo=timezone.utc),
+        date=datetime(2025, 9, 15, 10, 30, 0, tzinfo=UTC),
         message="Add new feature\n\nDetailed description of the feature",
-        stats=CommitStats(
-            insertions=15,
-            deletions=5,
-            changed_files=["a.py", "b.py", "c.py"]
-        ),
-        diff="@@ -1,3 +1,3 @@\n-old line\n+new line"
+        stats=CommitStats(insertions=15, deletions=5, changed_files=["a.py", "b.py", "c.py"]),
+        diff="@@ -1,3 +1,3 @@\n-old line\n+new line",
     )
 
 
@@ -98,14 +95,10 @@ def mock_git_repo():
     mock_commit.hexsha = "abc123def456"
     mock_commit.author.name = "Test Author"
     mock_commit.author.email = "test@example.com"
-    mock_commit.committed_datetime = datetime(2025, 9, 15, 10, 30, 0, tzinfo=timezone.utc)
+    mock_commit.committed_datetime = datetime(2025, 9, 15, 10, 30, 0, tzinfo=UTC)
     mock_commit.message = "Add new feature\n\nDetailed description"
     mock_commit.parents = []
-    mock_commit.stats.total = {
-        "insertions": 15,
-        "deletions": 5,
-        "files": 3
-    }
+    mock_commit.stats.total = {"insertions": 15, "deletions": 5, "files": 3}
     mock_commit.stats.files = {"a.py": {}, "b.py": {}, "c.py": {}}
 
     mock_repo.iter_commits.return_value = [mock_commit]

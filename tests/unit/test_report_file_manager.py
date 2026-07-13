@@ -1,10 +1,11 @@
-import pytest
 import os
 from datetime import datetime
 from unittest.mock import patch
 
+import pytest
+
+from weekly_report_prompt.const import MEMO_BLANK_MESSAGE, REPORT_BLANK_MESSAGE
 from weekly_report_prompt.report_file_manager import ReportFileManager
-from weekly_report_prompt.const import REPORT_BLANK_MESSAGE, MEMO_BLANK_MESSAGE
 
 
 class TestReportFileManager:
@@ -21,7 +22,7 @@ class TestReportFileManager:
 
     def test_initialization_with_default_build_dir(self, config_loader, temp_dir):
         """Test ReportFileManager initialization with default build directory."""
-        with patch('weekly_report_prompt.report_file_manager.Path') as mock_path:
+        with patch("weekly_report_prompt.report_file_manager.Path") as mock_path:
             mock_path.__file__ = __file__
             mock_path.return_value.parent.parent = temp_dir
 
@@ -39,7 +40,7 @@ class TestReportFileManager:
         """Test getting today's date string."""
         manager = ReportFileManager(config_loader, build_dir=build_dir)
 
-        with patch('weekly_report_prompt.report_file_manager.datetime') as mock_datetime:
+        with patch("weekly_report_prompt.report_file_manager.datetime") as mock_datetime:
             mock_now = datetime(2025, 9, 15, 14, 30, 45)
             mock_datetime.now.return_value = mock_now
             # datetime 클래스 자체를 mock에서 가져오도록 설정
@@ -53,7 +54,7 @@ class TestReportFileManager:
         manager = ReportFileManager(config_loader, build_dir=build_dir)
         prompt_content = "# Test Prompt\n\nThis is a test prompt."
 
-        with patch.object(manager, 'get_today_str', return_value="20250915-143045"):
+        with patch.object(manager, "get_today_str", return_value="20250915-143045"):
             file_path = manager.save_prompt(prompt_content)
 
         expected_filename = "prompt-20250915-143045.md"
@@ -64,7 +65,7 @@ class TestReportFileManager:
 
         # Verify file was created with correct content
         assert os.path.exists(file_path)
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             saved_content = f.read()
         assert saved_content == prompt_content
 
@@ -72,7 +73,7 @@ class TestReportFileManager:
         """Test creating a new report file."""
         manager = ReportFileManager(config_loader, build_dir=build_dir)
 
-        with patch.object(manager, 'get_today_str', return_value="20250915-143045"):
+        with patch.object(manager, "get_today_str", return_value="20250915-143045"):
             file_path = manager.create_report_file()
 
         expected_filename = "report-20250915-143045.md"
@@ -82,7 +83,7 @@ class TestReportFileManager:
 
         # Verify file was created with blank message
         assert os.path.exists(file_path)
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read()
         assert content == REPORT_BLANK_MESSAGE
 
@@ -125,11 +126,7 @@ class TestReportFileManager:
         manager = ReportFileManager(config_loader, build_dir=build_dir)
 
         # Create old history files that exceed the limit
-        old_files = [
-            "report-20250901-100000.md",
-            "report-20250902-100000.md",
-            "report-20250903-100000.md"
-        ]
+        old_files = ["report-20250901-100000.md", "report-20250902-100000.md", "report-20250903-100000.md"]
 
         for filename in old_files:
             file_path = os.path.join(manager.history_dir, filename)
@@ -159,7 +156,7 @@ class TestReportFileManager:
         history_files = [
             ("report-20250910-100000.md", "# Report 1"),
             ("report-20250911-100000.md", "# Report 2"),
-            ("report-20250912-100000.md", "# Report 3")
+            ("report-20250912-100000.md", "# Report 3"),
         ]
 
         for filename, content in history_files:
@@ -183,7 +180,7 @@ class TestReportFileManager:
         memo_path = manager.ensure_memo_file()
 
         assert os.path.exists(memo_path)
-        with open(memo_path, "r", encoding="utf-8") as f:
+        with open(memo_path, encoding="utf-8") as f:
             assert f.read() == MEMO_BLANK_MESSAGE
 
     def test_fetch_report_history(self, config_loader, build_dir):
@@ -232,11 +229,7 @@ class TestReportFileManager:
         manager = ReportFileManager(config_loader, build_dir=build_dir)
 
         # Create history files with different dates
-        history_files = [
-            "report-20250910-100000.md",
-            "report-20250915-120000.md",
-            "report-20250912-110000.md"
-        ]
+        history_files = ["report-20250910-100000.md", "report-20250915-120000.md", "report-20250912-110000.md"]
 
         for filename in history_files:
             file_path = os.path.join(manager.history_dir, filename)
@@ -301,14 +294,8 @@ class TestReportFileManager:
         manager = ReportFileManager(config_loader, build_dir=build_dir)
 
         # Create some prompt files and other files
-        prompt_files = [
-            "prompt-20250910-100000.md",
-            "prompt-20250911-110000.md"
-        ]
-        other_files = [
-            "report-20250910-100000.md",
-            "other-file.txt"
-        ]
+        prompt_files = ["prompt-20250910-100000.md", "prompt-20250911-110000.md"]
+        other_files = ["report-20250910-100000.md", "other-file.txt"]
 
         for filename in prompt_files + other_files:
             file_path = os.path.join(build_dir, filename)

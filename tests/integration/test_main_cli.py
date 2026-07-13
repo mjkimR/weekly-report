@@ -6,11 +6,11 @@ commits to report on, so a run that failed still destroyed state. Only a test th
 at the filesystem can catch that.
 """
 
-import pytest
-import yaml
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+import yaml
 from git import Actor, Repo
 
 from weekly_report_prompt.const import REPORT_BLANK_MESSAGE
@@ -79,9 +79,12 @@ def workspace(tmp_path, repo):
 
     return {
         "argv": [
-            "--config", str(config_path),
-            "--template", str(template_path),
-            "--build-dir", str(build_dir),
+            "--config",
+            str(config_path),
+            "--template",
+            str(template_path),
+            "--build-dir",
+            str(build_dir),
         ],
         "build_dir": build_dir,
     }
@@ -158,9 +161,14 @@ def test_commits_are_collected_since_the_unarchived_report(workspace, repo):
     """The cutoff comes from the report in build/, so older commits stay out."""
     commit_file(repo, "old.txt", "old\n", "feat: long before the last report")
     old_date = datetime(2025, 1, 1, 12, 0, 0).isoformat()
-    repo.git.commit("--amend", "--no-edit", date=old_date, env={
-        "GIT_COMMITTER_DATE": old_date,
-    })
+    repo.git.commit(
+        "--amend",
+        "--no-edit",
+        date=old_date,
+        env={
+            "GIT_COMMITTER_DATE": old_date,
+        },
+    )
     commit_file(repo, "new.txt", "new\n", "feat: after the last report")
 
     main(workspace["argv"])

@@ -1,10 +1,10 @@
-import git
 import os
 from datetime import datetime
-from typing import List
 
-from weekly_report_prompt.schemas import CommitData
+import git
+
 from weekly_report_prompt.config_loader import ConfigLoader
+from weekly_report_prompt.schemas import CommitData
 
 
 class GitDataCollector:
@@ -17,15 +17,13 @@ class GitDataCollector:
     def collect_commits(
         self,
         since_date: datetime,
-    ) -> List[CommitData]:
+    ) -> list[CommitData]:
         """Collect commits since the given date, excluding merge commits and those not matching the configured author."""
         commits = []
         # Walk every branch, local and remote, so work done outside the checked-out
         # branch is reported. Not `all=True`: that also walks refs/stash, which would
         # report stashed work-in-progress as completed work.
-        for commit in self.repo.iter_commits(
-            branches=True, remotes=True, since=since_date
-        ):
+        for commit in self.repo.iter_commits(branches=True, remotes=True, since=since_date):
             # Exclude merge commits
             if len(commit.parents) > 1:
                 continue
@@ -33,9 +31,7 @@ class GitDataCollector:
             if commit.author.name != self.author:
                 continue
 
-            commit_data = CommitData.from_commit(
-                commit, self.get_commit_diff(commit.hexsha)
-            )
+            commit_data = CommitData.from_commit(commit, self.get_commit_diff(commit.hexsha))
             commits.append(commit_data)
 
         return commits

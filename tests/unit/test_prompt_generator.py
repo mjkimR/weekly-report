@@ -1,9 +1,10 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
+import pytest
+
 from weekly_report_prompt.prompt_generator import PromptGenerator, fenced
-from weekly_report_prompt.schemas import CommitData, CommitStats, CommitDataSummary
+from weekly_report_prompt.schemas import CommitData, CommitDataSummary, CommitStats
 
 
 class TestFenced:
@@ -28,21 +29,15 @@ class TestPromptGenerator:
     def sample_project_data(self, sample_commit_data):
         """Provide sample project data for testing."""
         summary = CommitDataSummary(
-            start_date=datetime(2025, 9, 10, tzinfo=timezone.utc),
-            end_date=datetime(2025, 9, 17, tzinfo=timezone.utc),
+            start_date=datetime(2025, 9, 10, tzinfo=UTC),
+            end_date=datetime(2025, 9, 17, tzinfo=UTC),
             total_commits=2,
             total_insertions=25,
             total_deletions=10,
-            total_files_changed=5
+            total_files_changed=5,
         )
 
-        return [
-            {
-                "project_name": "test-project",
-                "summary": summary,
-                "recent_commits": [sample_commit_data]
-            }
-        ]
+        return [{"project_name": "test-project", "summary": summary, "recent_commits": [sample_commit_data]}]
 
     def test_initialization(self, sample_project_data, config_loader):
         """Test PromptGenerator initialization."""
@@ -50,10 +45,7 @@ class TestPromptGenerator:
         memo = "Test memo content"
 
         generator = PromptGenerator(
-            project_data=sample_project_data,
-            config_loader=config_loader,
-            previous_reports=previous_reports,
-            memo=memo
+            project_data=sample_project_data, config_loader=config_loader, previous_reports=previous_reports, memo=memo
         )
 
         assert generator.project_data == sample_project_data
@@ -65,10 +57,7 @@ class TestPromptGenerator:
 
     def test_initialization_with_defaults(self, sample_project_data, config_loader):
         """Test PromptGenerator initialization with default values."""
-        generator = PromptGenerator(
-            project_data=sample_project_data,
-            config_loader=config_loader
-        )
+        generator = PromptGenerator(project_data=sample_project_data, config_loader=config_loader)
 
         assert generator.previous_reports == []
         assert generator.memo is None
@@ -105,10 +94,10 @@ class TestPromptGenerator:
             id="abc123def456",
             author="Test Author",
             email="test@example.com",
-            date=datetime(2025, 9, 15, tzinfo=timezone.utc),
+            date=datetime(2025, 9, 15, tzinfo=UTC),
             message="Test commit",
             stats=CommitStats(insertions=50, deletions=0, changed_files=["big.py"]),
-            diff=long_diff
+            diff=long_diff,
         )
 
         generator = PromptGenerator([], config_loader)
@@ -130,10 +119,10 @@ class TestPromptGenerator:
             id="def456ghi789",
             author="Test Author",
             email="test@example.com",
-            date=datetime(2025, 9, 16, tzinfo=timezone.utc),
+            date=datetime(2025, 9, 16, tzinfo=UTC),
             message="Fix bug",
             stats=CommitStats(insertions=5, deletions=2, changed_files=["bug.py"]),
-            diff="@@ -5,1 +5,1 @@\n-old bug\n+fixed bug"
+            diff="@@ -5,1 +5,1 @@\n-old bug\n+fixed bug",
         )
 
         generator = PromptGenerator([], config_loader)
@@ -167,11 +156,7 @@ class TestPromptGenerator:
     def test_generate_prompt_with_previous_reports(self, sample_project_data, config_loader):
         """Test generating prompt with previous reports."""
         previous_reports = ["Previous report 1", "Previous report 2"]
-        generator = PromptGenerator(
-            sample_project_data,
-            config_loader,
-            previous_reports=previous_reports
-        )
+        generator = PromptGenerator(sample_project_data, config_loader, previous_reports=previous_reports)
 
         prompt = generator.generate_prompt()
 
@@ -186,9 +171,7 @@ class TestPromptGenerator:
         the report's own headings and bullets to run together with the prompt's.
         """
         report = "# Week of 6/25\n\n## Done\n\n* shipped the thing\n* fixed the bug"
-        generator = PromptGenerator(
-            sample_project_data, config_loader, previous_reports=[report]
-        )
+        generator = PromptGenerator(sample_project_data, config_loader, previous_reports=[report])
 
         prompt = generator.generate_prompt()
 
@@ -198,18 +181,14 @@ class TestPromptGenerator:
     def test_a_report_containing_a_fence_stays_inside_its_own_fence(self, sample_project_data, config_loader):
         """Reports quote code, so the wrapping fence has to be longer than theirs."""
         report = "# Week\n\n```python\nprint('hi')\n```"
-        generator = PromptGenerator(
-            sample_project_data, config_loader, previous_reports=[report]
-        )
+        generator = PromptGenerator(sample_project_data, config_loader, previous_reports=[report])
 
         prompt = generator.generate_prompt()
 
         assert f"````markdown\n{report}\n````" in prompt
 
     def test_each_previous_report_gets_its_own_fence(self, sample_project_data, config_loader):
-        generator = PromptGenerator(
-            sample_project_data, config_loader, previous_reports=["# a", "# b"]
-        )
+        generator = PromptGenerator(sample_project_data, config_loader, previous_reports=["# a", "# b"])
 
         prompt = generator.generate_prompt()
 
@@ -218,11 +197,7 @@ class TestPromptGenerator:
     def test_generate_prompt_with_memo(self, sample_project_data, config_loader):
         """Test generating prompt with memo."""
         memo = "Important notes for this week:\n- Task A completed\n- Task B in progress"
-        generator = PromptGenerator(
-            sample_project_data,
-            config_loader,
-            memo=memo
-        )
+        generator = PromptGenerator(sample_project_data, config_loader, memo=memo)
 
         prompt = generator.generate_prompt()
 
@@ -241,13 +216,7 @@ class TestPromptGenerator:
 
     def test_generate_prompt_with_empty_summary(self, config_loader, sample_commit_data):
         """Test generating prompt with empty summary."""
-        project_data = [
-            {
-                "project_name": "empty-project",
-                "summary": None,
-                "recent_commits": [sample_commit_data]
-            }
-        ]
+        project_data = [{"project_name": "empty-project", "summary": None, "recent_commits": [sample_commit_data]}]
 
         generator = PromptGenerator(project_data, config_loader)
         prompt = generator.generate_prompt()
@@ -257,34 +226,26 @@ class TestPromptGenerator:
     def test_generate_prompt_with_multiple_projects(self, config_loader, sample_commit_data):
         """Test generating prompt with multiple projects."""
         summary1 = CommitDataSummary(
-            start_date=datetime(2025, 9, 10, tzinfo=timezone.utc),
-            end_date=datetime(2025, 9, 17, tzinfo=timezone.utc),
+            start_date=datetime(2025, 9, 10, tzinfo=UTC),
+            end_date=datetime(2025, 9, 17, tzinfo=UTC),
             total_commits=1,
             total_insertions=15,
             total_deletions=5,
-            total_files_changed=3
+            total_files_changed=3,
         )
 
         summary2 = CommitDataSummary(
-            start_date=datetime(2025, 9, 10, tzinfo=timezone.utc),
-            end_date=datetime(2025, 9, 17, tzinfo=timezone.utc),
+            start_date=datetime(2025, 9, 10, tzinfo=UTC),
+            end_date=datetime(2025, 9, 17, tzinfo=UTC),
             total_commits=2,
             total_insertions=30,
             total_deletions=15,
-            total_files_changed=8
+            total_files_changed=8,
         )
 
         project_data = [
-            {
-                "project_name": "project-1",
-                "summary": summary1,
-                "recent_commits": [sample_commit_data]
-            },
-            {
-                "project_name": "project-2",
-                "summary": summary2,
-                "recent_commits": []
-            }
+            {"project_name": "project-1", "summary": summary1, "recent_commits": [sample_commit_data]},
+            {"project_name": "project-2", "summary": summary2, "recent_commits": []},
         ]
 
         generator = PromptGenerator(project_data, config_loader)
@@ -296,7 +257,7 @@ class TestPromptGenerator:
         assert "Total commits: 2" in prompt
         assert "- None" in prompt  # Empty commits for project-2
 
-    @patch('weekly_report_prompt.prompt_generator.tiktoken')
+    @patch("weekly_report_prompt.prompt_generator.tiktoken")
     def test_count_approximate_tokens(self, mock_tiktoken, config_loader):
         """Test counting approximate tokens."""
         mock_encoding = Mock()
@@ -311,10 +272,8 @@ class TestPromptGenerator:
         mock_tiktoken.encoding_for_model.assert_called_once_with("gpt-4")
         mock_encoding.encode.assert_called_once_with("test text")
 
-    @patch('weekly_report_prompt.prompt_generator.tiktoken')
-    def test_count_approximate_tokens_estimates_when_the_encoding_will_not_load(
-        self, mock_tiktoken, config_loader
-    ):
+    @patch("weekly_report_prompt.prompt_generator.tiktoken")
+    def test_count_approximate_tokens_estimates_when_the_encoding_will_not_load(self, mock_tiktoken, config_loader):
         """tiktoken downloads on first use; an offline run must not lose the prompt."""
         mock_tiktoken.encoding_for_model.side_effect = ConnectionError("offline")
 

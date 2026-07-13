@@ -1,9 +1,10 @@
 import re
-from typing import List, Dict, Any, Optional
+from typing import Any
+
+import tiktoken
 
 from weekly_report_prompt.config_loader import ConfigLoader
 from weekly_report_prompt.schemas import CommitData
-import tiktoken
 
 # Used when tiktoken cannot load its encoding; roughly right for English prose and code.
 CHARS_PER_TOKEN = 4
@@ -22,11 +23,11 @@ def fenced(content: str, info: str = "") -> str:
 
 class PromptGenerator:
     def __init__(
-            self,
-            project_data: List[Dict[str, Any]],
-            config_loader: ConfigLoader,
-            previous_reports: Optional[List[str]] = None,
-            memo: Optional[str] = None,
+        self,
+        project_data: list[dict[str, Any]],
+        config_loader: ConfigLoader,
+        previous_reports: list[str] | None = None,
+        memo: str | None = None,
     ):
         """
         Args:
@@ -50,25 +51,16 @@ class PromptGenerator:
         # Commit message (use only the first line, or all lines; here, use all)
         # If the message has multiple lines, emphasize the first line or summarize as needed
         commit_message_lines = commit.message.strip().split("\n")
-        formatted_message = (
-            f"- **{commit_message_lines[0].strip()}**"  # First line in bold
-        )
+        formatted_message = f"- **{commit_message_lines[0].strip()}**"  # First line in bold
         if len(commit_message_lines) > 1:
             formatted_message += "\n  " + "\n  ".join(commit_message_lines[1:])
 
-        commit_lines.append(
-            f"{formatted_message} (ID: {commit.id[:7]}, Date: {commit.date.strftime('%Y-%m-%d')})"
-        )
+        commit_lines.append(f"{formatted_message} (ID: {commit.id[:7]}, Date: {commit.date.strftime('%Y-%m-%d')})")
 
         if include_diff and commit.diff:
             diff_content_lines = commit.diff.strip().splitlines()
             if len(diff_content_lines) > self.max_diff_lines:
-                diff_display = "\n".join(
-                    [
-                        f"    {line}"
-                        for line in diff_content_lines[: self.max_diff_lines]
-                    ]
-                )
+                diff_display = "\n".join([f"    {line}" for line in diff_content_lines[: self.max_diff_lines]])
                 diff_display += f"\n    ... (Some diff lines omitted, showing {self.max_diff_lines} of {len(diff_content_lines)} total lines)"
             else:
                 diff_display = "\n".join([f"    {line}" for line in diff_content_lines])
@@ -76,17 +68,12 @@ class PromptGenerator:
             commit_lines.append(f"  ```diff\n{diff_display}\n  ```")
         return "\n".join(commit_lines)
 
-    def _format_commits(
-            self, commits: List[CommitData], should_include_diff=True
-    ) -> str:
+    def _format_commits(self, commits: list[CommitData], should_include_diff=True) -> str:
         """Format a list of commits as a string."""
         if not commits:
             return "  - None"
 
-        formatted_commits_text = [
-            self._format_commit(commit, include_diff=should_include_diff)
-            for commit in commits
-        ]
+        formatted_commits_text = [self._format_commit(commit, include_diff=should_include_diff) for commit in commits]
         return "\n".join(formatted_commits_text)
 
     def generate_prompt(self, should_include_diff=True) -> str:
@@ -110,9 +97,7 @@ class PromptGenerator:
                 "## 📜 Previous Weekly Reports",
                 "Below are the contents of previous weekly reports, newest first. Please refer to these to maintain consistency and avoid duplication.",
             ]
-            previous_reports_section.extend(
-                fenced(report.strip(), "markdown") for report in self.previous_reports
-            )
+            previous_reports_section.extend(fenced(report.strip(), "markdown") for report in self.previous_reports)
             prompt_sections.append("\n\n".join(previous_reports_section))
 
         if self.memo:
@@ -138,24 +123,16 @@ class PromptGenerator:
                     f"{summary_title} ({summary.start_date.strftime('%Y-%m-%d')} ~ {summary.end_date.strftime('%Y-%m-%d')})"
                 )
                 summary_content.append(f"- Total commits: {summary.total_commits}")
-                summary_content.append(
-                    f"- Total lines added: {summary.total_insertions}"
-                )
+                summary_content.append(f"- Total lines added: {summary.total_insertions}")
                 summary_content.append(f"- Total lines deleted: {summary.total_deletions}")
-                summary_content.append(
-                    f"- Number of files changed: {summary.total_files_changed}"
-                )
+                summary_content.append(f"- Number of files changed: {summary.total_files_changed}")
             else:
                 summary_content.append(summary_title)
-                summary_content.append(
-                    "- No Git activity summary information for this period."
-                )
+                summary_content.append("- No Git activity summary information for this period.")
             prompt_sections.append("\n".join(summary_content))
 
             # Commit Details
-            commit_details_header = (
-                f"## 🚀 [{project_name}] Main Progress This Week (Based on Git Commits)"
-            )
+            commit_details_header = f"## 🚀 [{project_name}] Main Progress This Week (Based on Git Commits)"
             commit_details_parts = [
                 commit_details_header,
                 self._format_commits(recent_commits, should_include_diff),

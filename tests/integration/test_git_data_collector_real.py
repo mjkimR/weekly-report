@@ -5,10 +5,10 @@ we expect it to. These tests prove git actually accepts what we hand it, and tha
 set of commits we walk is the set we meant to walk.
 """
 
-import pytest
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
 from git import Actor, Repo
 
 from weekly_report_prompt.git_data_collector import GitDataCollector
