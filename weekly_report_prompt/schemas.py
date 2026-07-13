@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -8,21 +7,26 @@ class AppConfig(BaseModel):
     """Validated contents of config/config.yaml."""
 
     author: str
-    repository: List[str] = Field(default_factory=list)
-    max_diff_lines: int = 25
+    repository: list[str] = Field(default_factory=list)
+    # Zero is coherent -- commit messages, no diffs. A negative value would reach
+    # `lines[:n]` and quietly drop the tail of every diff instead.
+    max_diff_lines: int = Field(default=25, ge=0)
     lang: str = "ko"
-    report_history_limit: int = 10
+    # This also slices build/history for deletion, so zero would empty the archive. That
+    # archive is the only record of which periods have already been reported on, it decides
+    # the next run's collection window, and Git does not track it.
+    report_history_limit: int = Field(default=10, ge=1)
     # Advisory only, and nothing enforces it. How many tokens are too many depends on the
     # model you paste the prompt into -- Claude fits ~200k, Gemini and GPT ~1M -- so this
     # is a setting rather than a constant. The default leaves headroom under the smallest
     # of those, on the theory that a prompt this large is mostly diff noise anyway.
-    large_prompt_tokens: int = 150_000
+    large_prompt_tokens: int = Field(default=150_000, gt=0)
 
 
 class CommitStats(BaseModel):
     insertions: int
     deletions: int
-    changed_files: List[str]
+    changed_files: list[str]
 
 
 class CommitData(BaseModel):

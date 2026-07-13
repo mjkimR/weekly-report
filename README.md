@@ -42,9 +42,13 @@ directory. A run that finds no commits exits non-zero and leaves the build direc
 | `author` | — | Only commits by this author name are collected |
 | `repository` | `[]` | Paths of the Git repositories to read |
 | `lang` | `ko` | Language the LLM should write the report in |
-| `max_diff_lines` | `25` | Diff lines shown per commit before truncation |
-| `report_history_limit` | `10` | Reports kept in `build/history` and fed to the prompt |
+| `max_diff_lines` | `25` | Diff lines shown per commit before truncation (`0` omits diffs) |
+| `report_history_limit` | `10` | Reports kept in `build/history` and fed to the prompt (min `1`) |
 | `large_prompt_tokens` | `150000` | Warn above this token count |
+
+`report_history_limit` also decides what is deleted from the archive, so it is rejected
+below `1` — a `0` would empty `build/history`, and nothing else records which periods you
+have already reported on.
 
 The `large_prompt_tokens` warning is advisory; nothing is truncated and the run still
 succeeds. Raise it if you paste the prompt into a model with a large context window —

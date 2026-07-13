@@ -5,7 +5,11 @@ lang: english
 repository:
   - repository-path
 
-max_diff_lines: 200  # Maximum number of lines to show in a diff
+max_diff_lines: 200  # Maximum number of lines to show in a diff; 0 omits diffs entirely
+
+# How many past reports to keep in build/history and feed to the prompt. Must be at least
+# 1: this number also decides what gets deleted from the archive, and nothing else records
+# which periods you have already reported on.
 report_history_limit: 5
 
 # Warn when the generated prompt exceeds this many tokens. Advisory only -- nothing is
