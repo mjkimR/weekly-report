@@ -1,58 +1,72 @@
-# Weekly Report Prompt Generator
+# weekly-report
 
-> **Note**: This is a personal project designed for individual use. 
+> **Note**: This is a personal project designed for individual use.
 
-This tool generates structured prompts for LLM to create weekly development reports based on Git commit data.
+Weekly development reports from Git history, driven by agent skills. The CLI collects
+commits and builds a prompt file; an agent skill reads it, writes the report draft, and
+hands you the file to polish.
 
-## Purpose
+## Install
 
-This project doesn't generate the actual weekly reports directly. Instead, it:
-1. Collects Git commit data from specified repositories
-2. Processes and structures the data
-3. Generates a comprehensive prompt for LLM (Large Language Model)
-4. Creates a template file that can be used with the LLM to generate the actual weekly report
-
-## Features
-
-- Collects commit data from multiple Git repositories
-- Tracks changes since the last report
-- Generates structured prompts for LLM consumption
-- Maintains report history
-- Configurable templates and settings
-
-## Usage
-
-1. Run `uv run python setup_conf.py` once to create `config/config.yaml` and `config/template.md` from the examples
-2. Configure your repositories and settings in `config/config.yaml`
-3. Run `uv run weekly-report-prompt` to generate the prompt
-4. Use the generated prompt with your preferred LLM to create the actual report
-5. Paste the report into `build/report-<timestamp>.md`; the next run archives it and uses it as the starting point
+Two pieces share this repository and are pinned to the same git tag:
 
 ```
-uv run weekly-report-prompt [--dry-run] [--config PATH] [--template PATH] [--build-dir PATH]
+npx skills add mjkimR/weekly-report        # installs the skills into your agent
 ```
 
-Use `--dry-run` to see the summary and token count without writing anything to the build
-directory. A run that finds no commits exits non-zero and leaves the build directory alone.
+The skills run the CLI straight from git — no separate install, only [uv](https://docs.astral.sh/uv/) is required:
 
-### Settings
+```
+uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report <command>
+```
+
+## Skills
+
+| Skill | Use |
+| --- | --- |
+| `weekly-report` | Write this week's report. The only skill used routinely |
+| `weekly-report-onboard` | First-time setup: infer the format from past reports, pick repositories and authors, seed history |
+| `weekly-report-repos` | List, add or remove target repositories |
+
+## CLI
+
+```
+weekly-report run [--json] [--dry-run]                # collect commits, write prompt.md + blank report.md
+weekly-report repo list|add|remove [...]              # manage target repositories
+weekly-report authors <path>... [--json]              # commit-author candidates per repository
+weekly-report history import <file>... --date|--weekly-from <YYYY-MM-DD>
+```
+
+The JSON shapes, exit codes and file layout are specified in [docs/contract.md](docs/contract.md).
+Exit codes: `0` ok, `1` no commits in the period (nothing written), `2` not configured,
+`3` repository unreadable.
+
+## State
+
+Everything lives under `~/.weekly-report/` (override with `WEEKLY_REPORT_HOME`):
+
+- `config.yaml` — settings; created by onboarding, edited by hand or via `repo` commands
+- `template.md` — report format; created by onboarding
+- `report.md` — this week's working file; a new blank one is created each run
+- `prompt.md` — intermediate artifact, overwritten every run
+- `history/` — archived reports; the newest one decides the next collection window
+
+`history/` is the tool's only persistent state and is not tracked by Git — so it is not
+backed up either.
+
+## Settings
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `author` | — | Only commits by this author name are collected |
-| `repository` | `[]` | Paths of the Git repositories to read |
-| `lang` | `ko` | Language the LLM should write the report in |
-| `max_diff_lines` | `25` | Diff lines shown per commit before truncation (`0` omits diffs) |
-| `report_history_limit` | `10` | Reports kept in `build/history` and fed to the prompt (min `1`) |
-| `large_prompt_tokens` | `150000` | Warn above this token count |
+| `author` | — | Global commit author name; `repository[].authors` overrides per repo |
+| `repository` | `[]` | Objects with `path`, optional `name` and `authors` |
+| `lang` | `english` | Language the report is written in |
+| `max_diff_lines` | `50` | Diff lines shown per commit before truncation (`0` omits diffs) |
+| `report_history_limit` | `5` | Reports kept in `history/` and fed to the prompt (min `1`) |
+| `large_prompt_tokens` | `150000` | Warn above this estimated token count (advisory only) |
 
-`report_history_limit` also decides what is deleted from the archive, so it is rejected
-below `1` — a `0` would empty `build/history`, and nothing else records which periods you
-have already reported on.
-
-The `large_prompt_tokens` warning is advisory; nothing is truncated and the run still
-succeeds. Raise it if you paste the prompt into a model with a large context window —
-Gemini and GPT fit roughly 1M tokens, Claude roughly 200k.
+Constraint rationale lives as comments in `weekly_report/schemas.py`; design decisions in
+[docs/decisions.md](docs/decisions.md).
 
 ## Development
 
@@ -62,15 +76,3 @@ uv run pytest -m "not integration"  # skip the tests that shell out to git
 uv run ruff check .                 # lint
 uv run pyright                      # type check
 ```
-
-## Output
-
-The tool writes into `build/`:
-- `prompt-<timestamp>.md` — the prompt to paste into an LLM
-- `report-<timestamp>.md` — a blank report for you to fill in with the LLM's answer
-- `memo.md` — free-form notes carried into the next prompt
-- `history/` — reports you filled in on previous runs
-
-`build/` is the tool's only persistent state. The archive under `history/` is what decides
-the next run's collection window, and it is not tracked by Git — so it is not backed up
-either.
