@@ -1,143 +1,49 @@
-import os
-
 import pytest
-import yaml
-from pydantic import ValidationError
 
-from weekly_report_prompt.config_loader import ConfigLoader
+from weekly_report.config_loader import ConfigError, load_config, load_template, save_config
+from weekly_report.schemas import AppConfig, RepositoryEntry
 
 
-class TestConfigLoader:
-    """Test cases for ConfigLoader class."""
+class TestLoadConfig:
+    def test_missing_file(self, home):
+        with pytest.raises(ConfigError, match="config not found"):
+            load_config(home)
 
-    def test_config_loader_initialization(self, config_loader):
-        """Test ConfigLoader initialization with valid files."""
-        assert config_loader is not None
-        assert config_loader.settings is not None
-        assert config_loader.template is not None
+    def test_invalid_yaml(self, home):
+        home.root.mkdir(parents=True)
+        home.config_path.write_text("author: [unclosed", encoding="utf-8")
+        with pytest.raises(ConfigError, match="not valid YAML"):
+            load_config(home)
 
-    def test_config_loader_with_missing_config_file(self, template_file):
-        """Test ConfigLoader initialization with missing config file."""
-        with pytest.raises(FileNotFoundError, match="Configuration file not found"):
-            ConfigLoader(config_path="/nonexistent/config.yaml", template_path=template_file)
+    def test_invalid_schema(self, home):
+        home.root.mkdir(parents=True)
+        home.config_path.write_text("author: a\nreport_history_limit: 0\n", encoding="utf-8")
+        with pytest.raises(ConfigError, match="config is invalid"):
+            load_config(home)
 
-    def test_config_loader_with_missing_template_file(self, config_file):
-        """Test ConfigLoader initialization with missing template file."""
-        with pytest.raises(FileNotFoundError, match="Template file not found"):
-            ConfigLoader(config_path=config_file, template_path="/nonexistent/template.md")
+    def test_roundtrip(self, home):
+        config = AppConfig(
+            author="minjae.kim",
+            lang="korean",
+            repository=[RepositoryEntry(path="/work/athena", name="Athena")],
+        )
+        save_config(home, config)
+        loaded = load_config(home)
+        assert loaded == config
 
-    def test_get_author(self, config_loader):
-        """Test getting author from config."""
-        assert config_loader.get_author() == "Test Author"
+    def test_save_omits_unset_optionals(self, home):
+        save_config(home, AppConfig(author="a", repository=[RepositoryEntry(path="/r")]))
+        text = home.config_path.read_text(encoding="utf-8")
+        assert "name:" not in text
+        assert "authors:" not in text
 
-    def test_get_repositories(self, config_loader):
-        """Test getting repositories from config."""
-        assert config_loader.get_repositories() == ["/path/to/repo"]
 
-    def test_repository_must_be_a_list_of_paths(self, temp_dir):
-        """A mis-shaped repository entry fails at load time, not deep inside main()."""
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir, exist_ok=True)
+class TestLoadTemplate:
+    def test_missing_template(self, home):
+        with pytest.raises(ConfigError, match="template not found"):
+            load_template(home)
 
-        config_path = os.path.join(config_dir, "config.yaml")
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "author": "Test Author",
-                    "repository": [{"name": "test-repo", "path": "/path/to/repo"}],
-                },
-                f,
-            )
-
-        template_path = os.path.join(config_dir, "template.md")
-        with open(template_path, "w", encoding="utf-8") as f:
-            f.write("# Template")
-
-        with pytest.raises(ValidationError):
-            ConfigLoader(config_path=config_path, template_path=template_path)
-
-    def test_get_max_diff_lines(self, config_loader):
-        """Test getting max diff lines from config."""
-        assert config_loader.get_max_diff_lines() == 25
-
-    def test_get_max_diff_lines_default(self, temp_dir):
-        """Test getting max diff lines with default value."""
-        # Create config without max_diff_lines
-        config_data = {"author": "Test Author"}
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir, exist_ok=True)
-
-        config_path = os.path.join(config_dir, "config.yaml")
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(config_data, f)
-
-        template_path = os.path.join(config_dir, "template.md")
-        with open(template_path, "w", encoding="utf-8") as f:
-            f.write("# Template")
-
-        loader = ConfigLoader(config_path=config_path, template_path=template_path)
-        assert loader.get_max_diff_lines() == 25  # Default value
-
-    def test_get_lang(self, config_loader):
-        """Test getting language from config."""
-        assert config_loader.get_lang() == "ko"
-
-    def test_get_lang_default(self, temp_dir):
-        """Test getting language with default value."""
-        # Create config without lang
-        config_data = {"author": "Test Author"}
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir, exist_ok=True)
-
-        config_path = os.path.join(config_dir, "config.yaml")
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(config_data, f)
-
-        template_path = os.path.join(config_dir, "template.md")
-        with open(template_path, "w", encoding="utf-8") as f:
-            f.write("# Template")
-
-        loader = ConfigLoader(config_path=config_path, template_path=template_path)
-        assert loader.get_lang() == "ko"  # Default value
-
-    def test_get_large_prompt_tokens_default(self, config_loader):
-        """The sample config omits the key, so the default applies."""
-        assert config_loader.get_large_prompt_tokens() == 150_000
-
-    def test_get_large_prompt_tokens_from_config(self, temp_dir):
-        """Whoever pastes the prompt into a 1M-token model can say so."""
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir, exist_ok=True)
-
-        config_path = os.path.join(config_dir, "config.yaml")
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"author": "Test Author", "large_prompt_tokens": 900_000}, f)
-
-        template_path = os.path.join(config_dir, "template.md")
-        with open(template_path, "w", encoding="utf-8") as f:
-            f.write("# Template")
-
-        loader = ConfigLoader(config_path=config_path, template_path=template_path)
-        assert loader.get_large_prompt_tokens() == 900_000
-
-    def test_get_report_history_limit(self, config_loader):
-        """Test getting report history limit from config."""
-        assert config_loader.get_report_history_limit() == 10
-
-    def test_get_report_history_limit_default(self, temp_dir):
-        """Test getting report history limit with default value."""
-        # Create config without report_history_limit
-        config_data = {"author": "Test Author"}
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir, exist_ok=True)
-
-        config_path = os.path.join(config_dir, "config.yaml")
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(config_data, f)
-
-        template_path = os.path.join(config_dir, "template.md")
-        with open(template_path, "w", encoding="utf-8") as f:
-            f.write("# Template")
-
-        loader = ConfigLoader(config_path=config_path, template_path=template_path)
-        assert loader.get_report_history_limit() == 10  # Default value
+    def test_reads_contents(self, home):
+        home.root.mkdir(parents=True)
+        home.template_path.write_text("# {date}\n", encoding="utf-8")
+        assert load_template(home) == "# {date}\n"

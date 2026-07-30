@@ -1,335 +1,228 @@
 import os
 from datetime import datetime
-from unittest.mock import patch
 
 import pytest
 
-from weekly_report_prompt.const import MEMO_BLANK_MESSAGE, REPORT_BLANK_MESSAGE
-from weekly_report_prompt.report_file_manager import ReportFileManager
-
-
-class TestReportFileManager:
-    """Test cases for ReportFileManager class."""
-
-    def test_initialization_with_build_dir(self, config_loader, build_dir):
-        """Test ReportFileManager initialization with provided build directory."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        assert manager.build_dir == build_dir
-        assert manager.history_dir == os.path.join(build_dir, "history")
-        assert manager.history_limit == 10
-        assert os.path.exists(manager.history_dir)
-
-    def test_initialization_with_default_build_dir(self, config_loader, temp_dir):
-        """Test ReportFileManager initialization with default build directory."""
-        with patch("weekly_report_prompt.report_file_manager.Path") as mock_path:
-            mock_path.__file__ = __file__
-            mock_path.return_value.parent.parent = temp_dir
-
-            manager = ReportFileManager(config_loader)
-
-            expected_build_dir = os.path.join(temp_dir, "build")
-            assert manager.build_dir == expected_build_dir
-
-    def test_initialization_with_invalid_build_dir(self, config_loader):
-        """Test ReportFileManager initialization with invalid build directory."""
-        with pytest.raises(NotADirectoryError, match="Build directory does not exist"):
-            ReportFileManager(config_loader, build_dir="/nonexistent/directory")
-
-    def test_get_today_str(self, config_loader, build_dir):
-        """Test getting today's date string."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        with patch("weekly_report_prompt.report_file_manager.datetime") as mock_datetime:
-            mock_now = datetime(2025, 9, 15, 14, 30, 45)
-            mock_datetime.now.return_value = mock_now
-            # datetime 클래스 자체를 mock에서 가져오도록 설정
-            mock_datetime.strftime = datetime.strftime
-
-            today_str = manager.get_today_str()
-            assert today_str == "20250915-143045"
-
-    def test_save_prompt(self, config_loader, build_dir):
-        """Test saving prompt to file."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-        prompt_content = "# Test Prompt\n\nThis is a test prompt."
-
-        with patch.object(manager, "get_today_str", return_value="20250915-143045"):
-            file_path = manager.save_prompt(prompt_content)
-
-        expected_filename = "prompt-20250915-143045.md"
-        expected_path = os.path.join(build_dir, expected_filename)
-
-        assert file_path == expected_path
-        assert manager.prompt_file_path == expected_path
-
-        # Verify file was created with correct content
-        assert os.path.exists(file_path)
-        with open(file_path, encoding="utf-8") as f:
-            saved_content = f.read()
-        assert saved_content == prompt_content
-
-    def test_create_report_file(self, config_loader, build_dir):
-        """Test creating a new report file."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        with patch.object(manager, "get_today_str", return_value="20250915-143045"):
-            file_path = manager.create_report_file()
-
-        expected_filename = "report-20250915-143045.md"
-        expected_path = os.path.join(build_dir, expected_filename)
-
-        assert file_path == expected_path
-
-        # Verify file was created with blank message
-        assert os.path.exists(file_path)
-        with open(file_path, encoding="utf-8") as f:
-            content = f.read()
-        assert content == REPORT_BLANK_MESSAGE
-
-    def test_move_previous_reports(self, config_loader, build_dir):
-        """Test moving previous reports to history directory."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        # Create some test report files
-        report1_path = os.path.join(build_dir, "report-20250910-100000.md")
-        report2_path = os.path.join(build_dir, "report-20250911-110000.md")
-        other_file_path = os.path.join(build_dir, "other-file.md")
-
-        # Create files with different content
-        with open(report1_path, "w", encoding="utf-8") as f:
-            f.write("# Completed Report 1")
-
-        with open(report2_path, "w", encoding="utf-8") as f:
-            f.write(REPORT_BLANK_MESSAGE)  # Blank report
-
-        with open(other_file_path, "w", encoding="utf-8") as f:
-            f.write("Not a report file")
-
-        manager.move_previous_reports()
-
-        # Check that completed report was moved to history
-        history_report1 = os.path.join(manager.history_dir, "report-20250910-100000.md")
-        assert os.path.exists(history_report1)
-        assert not os.path.exists(report1_path)
-
-        # Check that blank report was deleted
-        assert not os.path.exists(report2_path)
-
-        # Check that other file was not touched
-        assert os.path.exists(other_file_path)
-
-    def test_move_previous_reports_with_history_limit(self, config_loader, build_dir):
-        """Test moving reports with history limit enforcement."""
-        # Create config with lower history limit
-        config_loader.settings.report_history_limit = 2
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        # Create old history files that exceed the limit
-        old_files = ["report-20250901-100000.md", "report-20250902-100000.md", "report-20250903-100000.md"]
-
-        for filename in old_files:
-            file_path = os.path.join(manager.history_dir, filename)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write("# Old Report")
-
-        # Create new report to move
-        new_report_path = os.path.join(build_dir, "report-20250915-100000.md")
-        with open(new_report_path, "w", encoding="utf-8") as f:
-            f.write("# New Report")
-
-        manager.move_previous_reports()
-
-        # Check that old files were cleaned up (only 2 should remain + new one = 3 total)
-        history_files = [f for f in os.listdir(manager.history_dir) if f.startswith("report-")]
-        assert len(history_files) <= manager.history_limit
-
-        # New report should be in history
-        new_history_path = os.path.join(manager.history_dir, "report-20250915-100000.md")
-        assert os.path.exists(new_history_path)
-
-    def test_fetch_report_history_respects_the_history_limit(self, config_loader, build_dir):
-        """The limit bounds what the prompt carries, not just what cleanup keeps."""
-        config_loader.settings.report_history_limit = 2
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        history_files = [
-            ("report-20250910-100000.md", "# Report 1"),
-            ("report-20250911-100000.md", "# Report 2"),
-            ("report-20250912-100000.md", "# Report 3"),
-        ]
-
-        for filename, content in history_files:
-            file_path = os.path.join(manager.history_dir, filename)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
-        assert manager.fetch_report_history() == ["# Report 3", "# Report 2"]
-
-    def test_fetch_memo_does_not_create_the_memo_file(self, config_loader, build_dir):
-        """Reading the memo is read-only; a dry run must not leave a file behind."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        assert manager.fetch_memo() is None
-        assert not os.path.exists(os.path.join(build_dir, "memo.md"))
-
-    def test_ensure_memo_file_recreates_the_placeholder(self, config_loader, build_dir):
-        """Test that the memo placeholder comes back if it was deleted."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        memo_path = manager.ensure_memo_file()
-
-        assert os.path.exists(memo_path)
-        with open(memo_path, encoding="utf-8") as f:
-            assert f.read() == MEMO_BLANK_MESSAGE
-
-    def test_fetch_report_history(self, config_loader, build_dir):
-        """History is ordered by report date, not by how the contents happen to sort.
-
-        The headings below are deliberately chosen so that sorting the file *contents*
-        descending ("# 6/4" > "# 6/25" > "# 6/11") disagrees with real date order.
-        """
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        history_files = [
-            ("report-20260604-092902.md", "# 6/4"),
-            ("report-20260611-110353.md", "# 6/11"),
-            ("report-20260625-085641.md", "# 6/25"),
-        ]
-
-        for filename, content in history_files:
-            file_path = os.path.join(manager.history_dir, filename)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
-        history = manager.fetch_report_history()
-
-        assert history == ["# 6/25", "# 6/11", "# 6/4"]
-
-    def test_fetch_report_history_ignores_unrelated_files(self, config_loader, build_dir):
-        """Files that do not carry a report timestamp are not treated as history."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        for filename in ["report-20260604-092902.md", "report-draft.md", "notes.md"]:
-            file_path = os.path.join(manager.history_dir, filename)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(f"content of {filename}")
-
-        assert manager.fetch_report_history() == ["content of report-20260604-092902.md"]
-
-    def test_fetch_report_history_empty(self, config_loader, build_dir):
-        """Test fetching report history when no reports exist."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        history = manager.fetch_report_history()
-        assert history == []
-
-    def test_get_last_report_date(self, config_loader, build_dir):
-        """Test getting the last report date."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        # Create history files with different dates
-        history_files = ["report-20250910-100000.md", "report-20250915-120000.md", "report-20250912-110000.md"]
-
-        for filename in history_files:
-            file_path = os.path.join(manager.history_dir, filename)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write("# Test Report")
-
-        last_date = manager.get_last_report_date()
-
-        # Should return the latest date (20250915-120000)
-        expected_date = datetime(2025, 9, 15, 12, 0, 0)
-        assert last_date == expected_date
-
-    def test_get_last_report_date_no_reports(self, config_loader, build_dir):
-        """Test getting last report date when no reports exist."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        last_date = manager.get_last_report_date()
-        assert last_date is None
-
-    def test_get_last_report_date_counts_a_report_not_yet_archived(self, config_loader, build_dir):
-        """A filled-in report in the build dir marks the period, before it is archived.
-
-        main() reads the date before it moves anything, so this must not depend on
-        move_previous_reports() having run first.
-        """
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        with open(os.path.join(manager.history_dir, "report-20250910-100000.md"), "w") as f:
-            f.write("# Archived report")
-        with open(os.path.join(build_dir, "report-20250917-120000.md"), "w") as f:
-            f.write("# This week, already written up")
-
-        assert manager.get_last_report_date() == datetime(2025, 9, 17, 12, 0, 0)
-
-    def test_get_last_report_date_ignores_a_blank_report(self, config_loader, build_dir):
-        """A blank report was never written up, so it does not close out a period."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        with open(os.path.join(manager.history_dir, "report-20250910-100000.md"), "w") as f:
-            f.write("# Archived report")
-        with open(os.path.join(build_dir, "report-20250917-120000.md"), "w") as f:
-            f.write(REPORT_BLANK_MESSAGE)
-
-        assert manager.get_last_report_date() == datetime(2025, 9, 10, 10, 0, 0)
-
-    def test_fetch_report_history_includes_a_report_not_yet_archived(self, config_loader, build_dir):
-        """The prompt must show last week's report even though it is still in build/."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        with open(os.path.join(manager.history_dir, "report-20250910-100000.md"), "w") as f:
-            f.write("# older")
-        with open(os.path.join(build_dir, "report-20250917-120000.md"), "w") as f:
-            f.write("# newest, not archived yet")
-
-        assert manager.fetch_report_history() == [
-            "# newest, not archived yet",
-            "# older",
-        ]
-
-    def test_clear_previous_prompts(self, config_loader, build_dir):
-        """Test clearing previous prompt files."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        # Create some prompt files and other files
-        prompt_files = ["prompt-20250910-100000.md", "prompt-20250911-110000.md"]
-        other_files = ["report-20250910-100000.md", "other-file.txt"]
-
-        for filename in prompt_files + other_files:
-            file_path = os.path.join(build_dir, filename)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write("test content")
-
-        manager.clear_previous_prompts()
-
-        # Check that prompt files were deleted
-        for filename in prompt_files:
-            file_path = os.path.join(build_dir, filename)
-            assert not os.path.exists(file_path)
-
-        # Check that other files remain
-        for filename in other_files:
-            file_path = os.path.join(build_dir, filename)
-            assert os.path.exists(file_path)
-
-    def test_fetch_memo(self, config_loader, build_dir):
-        """Test fetching memo content."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        memo_content = "# Weekly Notes\n\n- Important task completed\n- Next week planning"
-        memo_path = os.path.join(build_dir, "memo.md")
-
-        with open(memo_path, "w", encoding="utf-8") as f:
-            f.write(memo_content)
-
-        result = manager.fetch_memo()
-        assert result == memo_content
-
-    def test_fetch_memo_not_exists(self, config_loader, build_dir):
-        """Test fetching memo when file doesn't exist."""
-        manager = ReportFileManager(config_loader, build_dir=build_dir)
-
-        result = manager.fetch_memo()
-        assert result is None
+from weekly_report.report_file_manager import (
+    ReportFileManager,
+    blank_report_content,
+    import_report,
+    is_blank_report_text,
+    parse_created_marker,
+    report_date,
+    strip_report_marks,
+)
+
+
+def write_history(home, *dates: datetime, content: str = "old report"):
+    home.ensure()
+    paths = []
+    for date in dates:
+        path = home.history_dir / f"report-{date.strftime('%Y%m%d-%H%M%S')}.md"
+        path.write_text(content, encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
+class TestReportDate:
+    def test_parses_report_filenames(self):
+        assert report_date("report-20260730-091331.md") == datetime(2026, 7, 30, 9, 13, 31)
+
+    @pytest.mark.parametrize(
+        "name",
+        ["report.md", "report-2026-091331.md", "prompt-20260730-091331.md", "report-20260730-091331.txt"],
+    )
+    def test_ignores_everything_else(self, name):
+        assert report_date(name) is None
+
+
+class TestCreatedMarker:
+    def test_roundtrip(self):
+        created = datetime(2026, 7, 30, 9, 13, 31)
+        assert parse_created_marker(blank_report_content(created)) == created
+
+    def test_survives_content_written_below(self):
+        created = datetime(2026, 7, 30, 9, 13, 31)
+        text = blank_report_content(created) + "\n# 7/30\n\n* did things\n"
+        assert parse_created_marker(text) == created
+
+    def test_absent_marker_is_none(self):
+        assert parse_created_marker("# 7/30\n\n* did things\n") is None
+
+
+class TestBlankDetection:
+    def test_fresh_blank_report_is_blank(self):
+        assert is_blank_report_text(blank_report_content(datetime(2026, 7, 30)))
+
+    def test_comments_and_whitespace_are_still_blank(self):
+        # The user may delete placeholder lines without writing anything.
+        assert is_blank_report_text("")
+        assert is_blank_report_text("\n  \n")
+        assert is_blank_report_text("[//]: # (weekly-report: created 2026-07-30T09:13:31)\n")
+
+    def test_any_real_content_is_filled(self):
+        text = blank_report_content(datetime(2026, 7, 30)) + "# 7/30\n* worked\n"
+        assert not is_blank_report_text(text)
+
+
+class TestStripReportMarks:
+    def test_removes_marker_and_placeholder_keeps_report(self):
+        text = blank_report_content(datetime(2026, 7, 23, 9, 29, 52)) + "# 7/23\n* worked\n"
+        assert strip_report_marks(text) == "# 7/23\n* worked"
+
+    def test_plain_report_is_untouched(self):
+        assert strip_report_marks("# 7/23\n* worked\n") == "# 7/23\n* worked"
+
+
+class TestHistory:
+    def test_entries_newest_first_and_non_reports_ignored(self, home):
+        write_history(home, datetime(2026, 7, 16, 9, 0, 0), datetime(2026, 7, 23, 9, 0, 0))
+        (home.history_dir / "notes.md").write_text("not a report", encoding="utf-8")
+
+        manager = ReportFileManager(home, history_limit=5)
+        dates = [date for date, _ in manager.history_entries()]
+        assert dates == [datetime(2026, 7, 23, 9, 0, 0), datetime(2026, 7, 16, 9, 0, 0)]
+
+    def test_trim_removes_oldest_beyond_limit(self, home):
+        write_history(
+            home,
+            datetime(2026, 7, 9, 9, 0, 0),
+            datetime(2026, 7, 16, 9, 0, 0),
+            datetime(2026, 7, 23, 9, 0, 0),
+        )
+        manager = ReportFileManager(home, history_limit=2)
+        manager.trim_history()
+        dates = [date for date, _ in manager.history_entries()]
+        assert dates == [datetime(2026, 7, 23, 9, 0, 0), datetime(2026, 7, 16, 9, 0, 0)]
+
+    def test_import_report(self, home, tmp_path):
+        source = tmp_path / "old.md"
+        source.write_text("# 7/16\n* stuff\n", encoding="utf-8")
+
+        destination = import_report(home, source, datetime(2026, 7, 16, 9, 0, 0))
+
+        assert destination.name == "report-20260716-090000.md"
+        assert destination.read_text(encoding="utf-8") == "# 7/16\n* stuff\n"
+        assert source.exists(), "import copies, it does not move"
+
+    def test_import_refuses_to_overwrite(self, home, tmp_path):
+        source = tmp_path / "old.md"
+        source.write_text("x", encoding="utf-8")
+        import_report(home, source, datetime(2026, 7, 16, 9, 0, 0))
+        with pytest.raises(FileExistsError):
+            import_report(home, source, datetime(2026, 7, 16, 9, 0, 0))
+
+
+class TestReportMd:
+    def test_blank_report_is_not_filled(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        manager.create_blank_report(created=datetime(2026, 7, 30, 9, 13, 31))
+        assert not manager.report_md_is_filled()
+
+    def test_marker_beats_mtime(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        created = datetime(2026, 7, 23, 9, 29, 52)
+        manager.create_blank_report(created=created)
+        with home.report_path.open("a", encoding="utf-8") as f:
+            f.write("# 7/23\n* worked\n")
+
+        date, used_mtime = manager.report_md_date()
+        assert date == created
+        assert not used_mtime
+
+    def test_mtime_fallback_when_marker_erased(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        home.ensure()
+        home.report_path.write_text("# 7/23\n* rewritten from scratch\n", encoding="utf-8")
+        mtime = datetime(2026, 7, 23, 18, 0, 0)
+        os.utime(home.report_path, (mtime.timestamp(), mtime.timestamp()))
+
+        date, used_mtime = manager.report_md_date()
+        assert date == mtime
+        assert used_mtime
+
+
+class TestKnownReports:
+    def test_filled_report_md_counts_before_archiving(self, home):
+        write_history(home, datetime(2026, 7, 16, 9, 0, 0))
+        manager = ReportFileManager(home, history_limit=5)
+        manager.create_blank_report(created=datetime(2026, 7, 23, 9, 29, 52))
+        with home.report_path.open("a", encoding="utf-8") as f:
+            f.write("# 7/23\n* worked\n")
+
+        assert manager.last_report_date() == datetime(2026, 7, 23, 9, 29, 52)
+
+    def test_blank_report_md_does_not_count(self, home):
+        write_history(home, datetime(2026, 7, 16, 9, 0, 0))
+        manager = ReportFileManager(home, history_limit=5)
+        manager.create_blank_report(created=datetime(2026, 7, 23, 9, 29, 52))
+
+        assert manager.last_report_date() == datetime(2026, 7, 16, 9, 0, 0)
+
+    def test_no_reports_at_all(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        assert manager.last_report_date() is None
+
+    def test_fetch_report_history_newest_first_up_to_limit(self, home):
+        for index, date in enumerate(
+            [datetime(2026, 7, 9, 9, 0, 0), datetime(2026, 7, 16, 9, 0, 0), datetime(2026, 7, 23, 9, 0, 0)]
+        ):
+            write_history(home, date, content=f"report {index}")
+
+        manager = ReportFileManager(home, history_limit=2)
+        assert manager.fetch_report_history() == ["report 2", "report 1"]
+
+    def test_fetch_report_history_strips_bookkeeping_marks(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        manager.create_blank_report(created=datetime(2026, 7, 23, 9, 29, 52))
+        with home.report_path.open("a", encoding="utf-8") as f:
+            f.write("# 7/23\n* worked\n")
+
+        assert manager.fetch_report_history() == ["# 7/23\n* worked"]
+
+
+class TestArchive:
+    def test_blank_report_is_discarded(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        manager.create_blank_report(created=datetime(2026, 7, 23, 9, 29, 52))
+
+        assert manager.archive_report_md() is None
+        assert not home.report_path.exists()
+        assert manager.history_entries() == []
+
+    def test_filled_report_is_archived_under_its_created_date(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        manager.create_blank_report(created=datetime(2026, 7, 23, 9, 29, 52))
+        with home.report_path.open("a", encoding="utf-8") as f:
+            f.write("# 7/23\n* worked\n")
+
+        destination = manager.archive_report_md()
+
+        assert destination is not None
+        assert destination.name == "report-20260723-092952.md"
+        assert not home.report_path.exists()
+
+    def test_missing_report_md_is_a_no_op(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        assert manager.archive_report_md() is None
+
+    def test_same_second_collision_does_not_overwrite(self, home):
+        date = datetime(2026, 7, 23, 9, 29, 52)
+        write_history(home, date, content="the original")
+        manager = ReportFileManager(home, history_limit=5)
+        home.report_path.write_text(blank_report_content(date) + "the newcomer\n", encoding="utf-8")
+
+        destination = manager.archive_report_md()
+
+        assert destination.name == "report-20260723-092953.md"
+        original = home.history_dir / "report-20260723-092952.md"
+        assert original.read_text(encoding="utf-8") == "the original"
+
+
+class TestWritePhase:
+    def test_write_prompt_overwrites_fixed_name(self, home):
+        manager = ReportFileManager(home, history_limit=5)
+        manager.write_prompt("first")
+        path = manager.write_prompt("second")
+        assert path == home.prompt_path
+        assert home.prompt_path.read_text(encoding="utf-8") == "second"

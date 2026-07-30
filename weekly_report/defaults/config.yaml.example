@@ -1,0 +1,21 @@
+# ~/.weekly-report/config.yaml -- created by the weekly-report-onboard skill.
+
+author: author.name   # Global default commit author; repository[].authors overrides it.
+
+lang: english         # Language the report is written in; inserted verbatim into the prompt.
+
+repository:
+  - path: /absolute/path/to/repo
+    name: MyProject             # Optional display name; default is the last path segment.
+    authors: [author.name]      # Optional per-repo author list when commit names differ.
+
+max_diff_lines: 50    # Diff lines shown per commit; 0 omits diffs entirely.
+
+# How many past reports to keep in history/ and feed to the prompt. Must be at least 1:
+# this number also decides what gets deleted from the archive, and nothing else records
+# which periods you have already reported on.
+report_history_limit: 5
+
+# Warn when the generated prompt exceeds this many tokens. Advisory only -- nothing is
+# truncated.
+large_prompt_tokens: 150000

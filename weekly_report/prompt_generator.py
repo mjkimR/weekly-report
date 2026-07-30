@@ -1,13 +1,16 @@
 import re
 from typing import Any
 
-import tiktoken
+from weekly_report.schemas import CommitData
 
-from weekly_report_prompt.config_loader import ConfigLoader
-from weekly_report_prompt.schemas import CommitData
-
-# Used when tiktoken cannot load its encoding; roughly right for English prose and code.
+# Roughly right for English prose and code. The count only drives a warning, so a
+# heuristic beats carrying a tokenizer dependency for it.
 CHARS_PER_TOKEN = 4
+TOKEN_ESTIMATE_METHOD = "heuristic"
+
+
+def approximate_tokens(text: str) -> int:
+    return len(text) // CHARS_PER_TOKEN
 
 
 def fenced(content: str, info: str = "") -> str:
@@ -25,31 +28,28 @@ class PromptGenerator:
     def __init__(
         self,
         project_data: list[dict[str, Any]],
-        config_loader: ConfigLoader,
+        template: str,
+        lang: str,
+        max_diff_lines: int,
         previous_reports: list[str] | None = None,
-        memo: str | None = None,
     ):
         """
         Args:
-            project_data: List of data per project (each dict includes project_name, recent_commits, summary, previous_report, etc.)
-            config_loader: Configuration loader instance
+            project_data: List of data per project (each dict includes project_name, recent_commits, summary)
+            template: Report template text, shown to the model as the format to follow
+            lang: Language the report must be written in, inserted verbatim
+            max_diff_lines: Per-commit diff line budget; 0 omits diffs entirely
+            previous_reports: Past report contents, newest first
         """
         self.project_data = project_data
-        self.config_loader = config_loader
-
-        self.max_diff_lines = config_loader.get_max_diff_lines()
-        self.lang = config_loader.get_lang()
-
-        # Load template
-        self.template = config_loader.get_template()
+        self.template = template
+        self.lang = lang
+        self.max_diff_lines = max_diff_lines
         self.previous_reports = previous_reports if previous_reports else []
-        self.memo = memo
 
     def _format_commit(self, commit: CommitData, include_diff: bool) -> str:
         """Format a single commit's information as a string."""
         commit_lines = []
-        # Commit message (use only the first line, or all lines; here, use all)
-        # If the message has multiple lines, emphasize the first line or summarize as needed
         commit_message_lines = commit.message.strip().split("\n")
         formatted_message = f"- **{commit_message_lines[0].strip()}**"  # First line in bold
         if len(commit_message_lines) > 1:
@@ -77,6 +77,9 @@ class PromptGenerator:
         return "\n".join(formatted_commits_text)
 
     def generate_prompt(self, should_include_diff=True) -> str:
+        # max_diff_lines == 0 means "commit messages only".
+        should_include_diff = should_include_diff and self.max_diff_lines > 0
+
         prompt_sections = [
             "# Weekly Work Report Request",
             "Hello! Please draft a weekly work report based on the provided Git activity and previous report (if available).",
@@ -99,15 +102,6 @@ class PromptGenerator:
             ]
             previous_reports_section.extend(fenced(report.strip(), "markdown") for report in self.previous_reports)
             prompt_sections.append("\n\n".join(previous_reports_section))
-
-        if self.memo:
-            memo_section = [
-                "## 📝 Memo",
-                "Below is the memo for this week's report. Please refer to this for additional context or notes.",
-                "",
-                f"{self.memo}",
-            ]
-            prompt_sections.append("\n".join(memo_section))
 
         # --- Per Project Section ---
         for project in self.project_data:
@@ -154,15 +148,3 @@ class PromptGenerator:
         prompt_sections.append("\n".join(instructions))
 
         return "\n\n".join(prompt_sections)
-
-    def count_approximate_tokens(self, text: str, model: str = "gpt-4") -> int:
-        """Calculate the approximate number of tokens in the given string.
-
-        tiktoken downloads its encoding on first use. The count is advisory — it only
-        drives a warning — so an offline run estimates instead of failing outright.
-        """
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except Exception:
-            return len(text) // CHARS_PER_TOKEN
-        return len(encoding.encode(text))
