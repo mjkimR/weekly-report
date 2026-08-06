@@ -18,3 +18,7 @@ wheels/
 # Configuration files
 config/config.yaml
 config/template.md
+
+# Agent local configuration / skills
+.agents/
+
