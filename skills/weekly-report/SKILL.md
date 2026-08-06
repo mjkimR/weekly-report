@@ -13,7 +13,7 @@ Handles one weekly report. The CLI collects commits and builds a prompt file; th
 2. Run the command below. Never run it twice — a second run deletes the blank report.md it just created and recomputes the collection window.
 
    ```
-   uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report run --json
+   uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.1 weekly-report run --json
    ```
 
 3. If the exit code is not 0, stop here:

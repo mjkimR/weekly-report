@@ -1,6 +1,6 @@
 [project]
 name = "weekly-report"
-version = "0.2.0"
+version = "0.2.1"
 description = "Weekly development reports from Git history, driven by agent skills"
 readme = "README.md"
 requires-python = ">=3.12"

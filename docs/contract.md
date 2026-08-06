@@ -179,7 +179,7 @@ CLI 문구는 번역하지 않는다. 사용자에게 보여주는 스킬이 최
 ## 실행 방법
 
 ```
-uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report <명령>
+uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.1 weekly-report <명령>
 ```
 
 태그는 `SKILL.md` 안에 박는다. 첫 실행에서 uv가 저장소를 받아 휠을 만들고, 그다음부터는 캐시를 쓴다.

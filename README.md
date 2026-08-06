@@ -17,7 +17,7 @@ npx skills add mjkimR/weekly-report        # installs the skills into your agent
 The skills run the CLI straight from git — no separate install, only [uv](https://docs.astral.sh/uv/) is required:
 
 ```
-uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report <command>
+uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.1 weekly-report <command>
 ```
 
 ## Skills

@@ -12,7 +12,7 @@ Check for uv first with `command -v uv`. If missing, point to the installer (htt
 Read what the user wants from their message and call the matching command. All commands run as:
 
 ```
-uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report repo <subcommand>
+uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.1 weekly-report repo <subcommand>
 ```
 
 | Request | Command |

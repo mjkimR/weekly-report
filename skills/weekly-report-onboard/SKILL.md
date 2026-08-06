@@ -10,7 +10,7 @@ Sets up the weekly report for the first time: reverse-engineer the format and to
 All CLI calls run as:
 
 ```
-uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report <command>
+uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.1 weekly-report <command>
 ```
 
 ## Steps
