@@ -4,8 +4,11 @@ from datetime import datetime
 import pytest
 
 from weekly_report.report_file_manager import (
+    APPROXIMATE_BOUNDARY_MARKER,
     ReportFileManager,
+    add_approximate_boundary_marker,
     blank_report_content,
+    has_approximate_boundary_marker,
     import_report,
     is_blank_report_text,
     parse_created_marker,
@@ -50,6 +53,20 @@ class TestCreatedMarker:
         assert parse_created_marker("# 7/30\n\n* did things\n") is None
 
 
+class TestApproximateBoundaryMarker:
+    def test_adds_marker_once_at_the_start(self):
+        report = "# 7/30\n* worked\n"
+        marked = add_approximate_boundary_marker(report)
+
+        assert marked == f"{APPROXIMATE_BOUNDARY_MARKER}\n{report}"
+        assert add_approximate_boundary_marker(marked) == marked
+        assert has_approximate_boundary_marker(marked)
+
+    def test_marker_must_be_the_first_line(self):
+        text = f"# 7/30\n{APPROXIMATE_BOUNDARY_MARKER}\n"
+        assert not has_approximate_boundary_marker(text)
+
+
 class TestBlankDetection:
     def test_fresh_blank_report_is_blank(self):
         assert is_blank_report_text(blank_report_content(datetime(2026, 7, 30)))
@@ -72,6 +89,10 @@ class TestStripReportMarks:
 
     def test_plain_report_is_untouched(self):
         assert strip_report_marks("# 7/23\n* worked\n") == "# 7/23\n* worked"
+
+    def test_removes_approximate_boundary_marker(self):
+        text = f"{APPROXIMATE_BOUNDARY_MARKER}\n# 7/30\n* worked\n"
+        assert strip_report_marks(text) == "# 7/30\n* worked"
 
 
 class TestHistory:
@@ -111,6 +132,23 @@ class TestHistory:
         import_report(home, source, datetime(2026, 7, 16, 9, 0, 0))
         with pytest.raises(FileExistsError):
             import_report(home, source, datetime(2026, 7, 16, 9, 0, 0))
+
+    def test_import_report_can_mark_an_approximate_boundary(self, home, tmp_path):
+        source = tmp_path / "old.md"
+        source.write_text("# 7/30\n* worked\n", encoding="utf-8")
+
+        destination = import_report(
+            home,
+            source,
+            datetime(2026, 7, 30),
+            approximate_boundary=True,
+        )
+
+        assert destination.name == "report-20260730-000000.md"
+        assert destination.read_text(encoding="utf-8") == (
+            f"{APPROXIMATE_BOUNDARY_MARKER}\n# 7/30\n* worked\n"
+        )
+        assert source.read_text(encoding="utf-8") == "# 7/30\n* worked\n"
 
 
 class TestReportMd:
@@ -162,6 +200,28 @@ class TestKnownReports:
     def test_no_reports_at_all(self, home):
         manager = ReportFileManager(home, history_limit=5)
         assert manager.last_report_date() is None
+
+    def test_last_report_boundary_marks_imported_history_as_approximate(self, home):
+        date = datetime(2026, 7, 30)
+        (path,) = write_history(home, date, content="# 7/30\n* worked")
+        path.write_text(add_approximate_boundary_marker(path.read_text(encoding="utf-8")), encoding="utf-8")
+
+        manager = ReportFileManager(home, history_limit=5)
+
+        assert manager.last_report_boundary() == (date, True)
+        assert manager.last_report_date() == date
+
+    def test_exact_report_md_supersedes_approximate_history(self, home):
+        (path,) = write_history(home, datetime(2026, 7, 30), content="# 7/30\n* worked")
+        path.write_text(add_approximate_boundary_marker(path.read_text(encoding="utf-8")), encoding="utf-8")
+        manager = ReportFileManager(home, history_limit=5)
+        exact = datetime(2026, 8, 6, 9, 38, 3)
+        manager.create_blank_report(created=exact)
+        with home.report_path.open("a", encoding="utf-8") as report:
+            report.write("# 8/6\n* worked\n")
+
+        assert manager.last_report_boundary() == (exact, False)
+        assert manager.last_report_date() == exact
 
     def test_fetch_report_history_newest_first_up_to_limit(self, home):
         for index, date in enumerate(

@@ -22,6 +22,7 @@ REPORT_FILENAME_RE = re.compile(r"^report-(\d{8}-\d{6})\.md$")
 REPORT_FILENAME_FORMAT = "%Y%m%d-%H%M%S"
 
 CREATED_AT_FORMAT = "%Y-%m-%dT%H:%M:%S"
+APPROXIMATE_BOUNDARY_MARKER = "[//]: # (weekly-report: boundary approximate date-only)"
 
 _CREATED_MARKER_RE = re.compile(r"\[//\]: # \(weekly-report: created (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\)")
 _COMMENT_LINE_RE = re.compile(r"^\[//\]: # \(.*\)\s*$")
@@ -48,6 +49,17 @@ def parse_created_marker(text: str) -> datetime | None:
     return datetime.strptime(match.group(1), CREATED_AT_FORMAT)
 
 
+def has_approximate_boundary_marker(text: str) -> bool:
+    lines = text.splitlines()
+    return bool(lines) and lines[0] == APPROXIMATE_BOUNDARY_MARKER
+
+
+def add_approximate_boundary_marker(text: str) -> str:
+    if has_approximate_boundary_marker(text):
+        return text
+    return f"{APPROXIMATE_BOUNDARY_MARKER}\n{text}"
+
+
 def is_blank_report_text(text: str) -> bool:
     """A report is blank while nothing but markdown comments is in it.
 
@@ -67,18 +79,23 @@ def strip_report_marks(text: str) -> str:
     lines = [
         line
         for line in text.splitlines()
-        if not _CREATED_MARKER_RE.search(line) and line.rstrip() != REPORT_BLANK_MESSAGE
+        if not _CREATED_MARKER_RE.search(line)
+        and line.rstrip() != REPORT_BLANK_MESSAGE
+        and line.rstrip() != APPROXIMATE_BOUNDARY_MARKER
     ]
     return "\n".join(lines).lstrip("\n")
 
 
-def import_report(home: Home, source: Path, date: datetime) -> Path:
+def import_report(home: Home, source: Path, date: datetime, *, approximate_boundary: bool = False) -> Path:
     """Copy an existing report into history/ under the given date."""
     home.ensure()
     destination = home.history_dir / f"report-{date.strftime(REPORT_FILENAME_FORMAT)}.md"
     if destination.exists():
         raise FileExistsError(f"already in history: {destination}")
-    shutil.copyfile(source, destination)
+    text = source.read_text(encoding="utf-8")
+    if approximate_boundary:
+        text = add_approximate_boundary_marker(text)
+    destination.write_text(text, encoding="utf-8")
     return destination
 
 
@@ -137,9 +154,17 @@ class ReportFileManager:
             entries.sort(key=lambda entry: entry[0], reverse=True)
         return entries
 
-    def last_report_date(self) -> datetime | None:
+    def last_report_boundary(self) -> tuple[datetime, bool] | None:
         entries = self.known_reports()
-        return entries[0][0] if entries else None
+        if not entries:
+            return None
+        date, path = entries[0]
+        text = path.read_text(encoding="utf-8")
+        return date, has_approximate_boundary_marker(text)
+
+    def last_report_date(self) -> datetime | None:
+        boundary = self.last_report_boundary()
+        return boundary[0] if boundary else None
 
     def fetch_report_history(self) -> list[str]:
         """Contents of the most recent reports for the prompt, newest first, up to the limit."""
