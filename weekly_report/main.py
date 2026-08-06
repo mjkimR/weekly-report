@@ -47,6 +47,14 @@ def _iso(date: datetime | None) -> str | None:
     return date.strftime(ISO_SECONDS) if date else None
 
 
+def _approximate_boundary_warning(date: datetime) -> str:
+    return (
+        "Onboarding only knows the imported report's date, not its exact cutoff time. "
+        f"To avoid missing commits, the first collection includes the entire boundary day ({date:%Y-%m-%d}). "
+        "Some work may overlap with the imported report, so please review the generated draft for duplicate items."
+    )
+
+
 def _print_json(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -128,10 +136,14 @@ def cmd_run(args) -> int:
                 "as the end of the reported period"
             )
 
-    last_report_date = manager.last_report_date()
-    if last_report_date is not None:
+    last_boundary = manager.last_report_boundary()
+    if last_boundary is not None:
+        last_report_date, approximate_boundary = last_boundary
         since, since_source = last_report_date, "history"
+        if approximate_boundary:
+            warnings.append(_approximate_boundary_warning(since))
     else:
+        last_report_date = None
         since = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0)
         since_source = "fallback_7d"
     period = {"since": _iso(since), "until": _iso(now), "since_source": since_source}
@@ -492,19 +504,18 @@ def cmd_history_import(args) -> int:
 
     home = Home()
 
-    # The archive needs a time-of-day only because filenames carry one; 09:00 is
-    # arbitrary and meaningless.
     imported = []
     try:
         for index, source in enumerate(sources):
             date = first_date - timedelta(days=7 * index)
-            date = date.replace(hour=9, minute=0, second=0, microsecond=0)
-            destination = import_report(home, source, date)
+            date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+            destination = import_report(home, source, date, approximate_boundary=True)
             imported.append({"source": str(source), "path": str(destination), "date": _iso(date)})
     except FileExistsError as error:
         return usage_error(str(error))
 
-    payload = {"schema_version": SCHEMA_VERSION, "status": "ok", "imported": imported, "warnings": []}
+    warnings = [_approximate_boundary_warning(first_date)]
+    payload = {"schema_version": SCHEMA_VERSION, "status": "ok", "imported": imported, "warnings": warnings}
     lines = [f"imported: {item['source']} -> {item['path']}" for item in imported]
     return _emit_simple(args, payload, EXIT_OK, lines)
 

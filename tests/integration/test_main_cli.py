@@ -6,7 +6,7 @@ docs/contract.md. Only a test that looks at the filesystem can catch those.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 import yaml
@@ -155,6 +155,71 @@ class TestRun:
         assert exit_code == 0
         assert any("'Idle' has no commits" in warning for warning in payload["warnings"])
 
+    def test_approximate_boundary_warning_survives_dry_run(
+        self, home, tmp_path, make_repo, commit_in, capsys
+    ):
+        repo_path = make_repo()
+        commit_in(repo_path, message="feat: boundary work")
+        configure(home, repos=[{"path": str(repo_path)}])
+        source = tmp_path / "old.md"
+        source.write_text("# old report\n", encoding="utf-8")
+        boundary = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        run_cli(capsys, "history", "import", str(source), "--date", boundary, "--json")
+
+        first_exit, first = run_cli(capsys, "run", "--dry-run", "--json")
+        second_exit, second = run_cli(capsys, "run", "--dry-run", "--json")
+
+        assert first_exit == second_exit == 0
+        assert first["period"]["since"] == f"{boundary}T00:00:00"
+        assert any("first collection includes the entire boundary day" in warning for warning in first["warnings"])
+        assert second["warnings"] == first["warnings"]
+
+    def test_exact_written_report_clears_approximate_warning(
+        self, home, tmp_path, make_repo, commit_in, capsys
+    ):
+        repo_path = make_repo()
+        commit_in(repo_path, message="feat: first report")
+        configure(home, repos=[{"path": str(repo_path)}])
+        source = tmp_path / "old.md"
+        source.write_text("# old report\n", encoding="utf-8")
+        boundary = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        run_cli(capsys, "history", "import", str(source), "--date", boundary, "--json")
+
+        first_exit, first = run_cli(capsys, "run", "--json")
+        assert first_exit == 0
+        assert any("first collection includes the entire boundary day" in warning for warning in first["warnings"])
+        with home.report_path.open("a", encoding="utf-8") as report:
+            report.write("# first exact report\n* worked\n")
+        commit_in(repo_path, message="feat: next report", filename="next.txt")
+
+        second_exit, second = run_cli(capsys, "run", "--dry-run", "--json")
+
+        assert second_exit == 0
+        assert second["period"]["since"] == first["period"]["until"]
+        assert not any("first collection includes the entire boundary day" in warning for warning in second["warnings"])
+
+    def test_no_commits_does_not_consume_approximate_warning(
+        self, home, tmp_path, make_repo, commit_in, capsys
+    ):
+        repo_path = make_repo()
+        commit_in(repo_path, message="old", date="2020-01-01T09:00:00")
+        configure(home, repos=[{"path": str(repo_path)}])
+        source = tmp_path / "old.md"
+        source.write_text("# old report\n", encoding="utf-8")
+        boundary = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        run_cli(capsys, "history", "import", str(source), "--date", boundary, "--json")
+
+        no_commit_exit, no_commit = run_cli(capsys, "run", "--json")
+        commit_in(repo_path, message="new")
+        retry_exit, retry = run_cli(capsys, "run", "--dry-run", "--json")
+
+        assert no_commit_exit == 1
+        assert any(
+            "first collection includes the entire boundary day" in warning for warning in no_commit["warnings"]
+        )
+        assert retry_exit == 0
+        assert any("first collection includes the entire boundary day" in warning for warning in retry["warnings"])
+
 
 class TestRepo:
     def test_add_normalizes_to_root_and_warns_on_no_recent_commits(self, home, make_repo, commit_in, capsys):
@@ -294,9 +359,9 @@ class TestHistoryImport:
 
         assert exit_code == 0
         names = sorted(path.name for path in home.history_dir.iterdir())
-        assert names == ["report-20260716-090000.md", "report-20260723-090000.md"]
-        assert payload["imported"][0]["date"] == "2026-07-23T09:00:00"
-        assert payload["imported"][1]["date"] == "2026-07-16T09:00:00"
+        assert names == ["report-20260716-000000.md", "report-20260723-000000.md"]
+        assert payload["imported"][0]["date"] == "2026-07-23T00:00:00"
+        assert payload["imported"][1]["date"] == "2026-07-16T00:00:00"
 
     def test_date_imports_a_single_file(self, home, tmp_path, capsys):
         (report,) = self.make_reports(tmp_path, 1)
@@ -304,7 +369,32 @@ class TestHistoryImport:
         exit_code, _ = run_cli(capsys, "history", "import", str(report), "--date", "2026-07-23", "--json")
 
         assert exit_code == 0
-        assert (home.history_dir / "report-20260723-090000.md").exists()
+        assert (home.history_dir / "report-20260723-000000.md").exists()
+
+    def test_date_import_marks_boundary_and_warns(self, home, tmp_path, capsys):
+        (report,) = self.make_reports(tmp_path, 1)
+
+        exit_code, payload = run_cli(
+            capsys,
+            "history",
+            "import",
+            str(report),
+            "--date",
+            "2026-07-30",
+            "--json",
+        )
+
+        assert exit_code == 0
+        imported = home.history_dir / "report-20260730-000000.md"
+        assert imported.read_text(encoding="utf-8").startswith(
+            "[//]: # (weekly-report: boundary approximate date-only)\n"
+        )
+        assert payload["imported"][0]["date"] == "2026-07-30T00:00:00"
+        assert payload["warnings"] == [
+            "Onboarding only knows the imported report's date, not its exact cutoff time. "
+            "To avoid missing commits, the first collection includes the entire boundary day (2026-07-30). "
+            "Some work may overlap with the imported report, so please review the generated draft for duplicate items."
+        ]
 
     def test_date_with_multiple_files_is_rejected(self, home, tmp_path, capsys):
         first, second = self.make_reports(tmp_path, 2)
