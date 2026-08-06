@@ -26,6 +26,8 @@ uvx --from git+https://github.com/mjkimR/weekly-report@v0.2.0 weekly-report <com
 9. Seed the received reports with `weekly-report history import`.
 10. Verify with `weekly-report run --dry-run --json`.
 
+CLI warnings are canonical English. Translate them into the language of the user's latest request before presenting them. Preserve dates, file paths, commands, and technical identifiers verbatim. If the request language is unclear, use the original English warning.
+
 ## Step 4: format checklist
 
 Extract the following from the received reports. Anything guessed gets confirmed with the user in step 5.
@@ -99,10 +101,12 @@ Ask the user for the dates. Never guess them from file contents — report title
 Asking only for the newest report's date and stepping back 7 days for the rest is enough:
 
 ```
-weekly-report history import newest.md previous.md before-that.md --weekly-from 2026-07-23
+weekly-report history import newest.md previous.md before-that.md --weekly-from 2026-07-23 --json
 ```
 
-If the user says the cadence was irregular, import one file at a time with `--date`. Save pasted reports to temporary files before importing.
+If the user says the cadence was irregular, import one file at a time with `weekly-report history import report.md --date 2026-07-23 --json`. Save pasted reports to temporary files before importing.
+
+An imported date has no exact cutoff time. The CLI deliberately records it as `00:00:00` and includes the whole boundary day in the first collection so no commits can be omitted. The import and verification dry-run therefore return an approximate-boundary warning; this is expected and does not mean onboarding failed. Translate that warning before presenting it.
 
 ## Step 10: verification
 
@@ -113,4 +117,4 @@ Run `weekly-report run --dry-run --json` and check:
 - Per-repository commit counts are non-zero. Zero usually means the author name is wrong
 - The token estimate is under the threshold. If over, advise lowering `max_diff_lines`
 
-Finish by telling the user the config file and state directory paths, and that from now on the `weekly-report` skill is the one to use.
+Finish by telling the user the config file and state directory paths, and that from now on the `weekly-report` skill is the one to use. Include the translated approximate-boundary warning in this final summary and tell the user to review the first generated draft for duplicate items.

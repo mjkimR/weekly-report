@@ -62,6 +62,8 @@ large_prompt_tokens: 150000   # 이 값을 넘으면 경고만 한다. 아무것
 
 수집 구간의 시작점은 아카이브된 리포트와 아직 `report.md` 에 남아 있는 리포트 중 가장 최근 날짜다. 내용이 채워진 `report.md` 는 아카이브되기 전에도 "이미 보고한 기간"으로 센다(날짜는 created 주석). 하나도 없으면 최근 7일을 본다.
 
+최신 히스토리의 첫 줄이 `[//]: # (weekly-report: boundary approximate date-only)` 면 그 시작점은 날짜만 아는 근사 경계다. `run` 은 이 경계를 쓰는 동안 `warnings` 에 아래 온보딩 경고를 넣는다. `--dry-run` 이나 커밋이 없는 실행은 상태를 쓰지 않으므로 경고를 소모하지 않는다. 첫 리포트를 실제로 작성해 정확한 created 경계가 생기면 그 리포트가 최신 경계가 되고 이후 경고는 사라진다.
+
 ### `weekly-report repo list | add | remove`
 
 ```
@@ -95,7 +97,13 @@ weekly-report repo remove <name-or-path>
 
 날짜를 파일 내용에서 추측하지 않는다. 리포트 제목이 `# 7/23` 처럼 연도가 없는 경우가 많고, 틀린 날짜가 들어가면 다음 수집 구간이 조용히 어긋난다. 둘 중 하나는 반드시 준다.
 
-저장 시각은 그 날짜의 09:00:00으로 고정한다. 파일 이름 규칙상 시각이 필요하지만, 실제 시각은 의미가 없다.
+날짜만으로는 리포트의 정확한 cutoff 시각을 알 수 없다. 누락을 막기 위해 저장 시각은 그 날짜의 `00:00:00` 으로 고정하고, 가져온 파일의 첫 줄에 `[//]: # (weekly-report: boundary approximate date-only)` 를 붙인다. 이 bookkeeping 주석은 과거 리포트를 프롬프트에 넣을 때 제거한다.
+
+성공한 import와 이 경계를 사용하는 첫 `run` 은 다음 canonical English warning을 `warnings` 에 넣는다.
+
+> Onboarding only knows the imported report's date, not its exact cutoff time. To avoid missing commits, the first collection includes the entire boundary day (YYYY-MM-DD). Some work may overlap with the imported report, so please review the generated draft for duplicate items.
+
+CLI 문구는 번역하지 않는다. 사용자에게 보여주는 스킬이 최신 요청의 언어로 번역하되 날짜, 파일 경로, 명령, 기술 식별자는 원문 그대로 보존한다.
 
 ## JSON 출력
 
@@ -151,7 +159,7 @@ weekly-report repo remove <name-or-path>
 
 `period.since_source` 는 `history` 또는 `fallback_7d` 다. `fallback_7d` 면 이전 리포트를 못 찾았다는 뜻이라, 스킬은 그 구간이 맞는지 사용자에게 물어본다. 온보딩 직후에 이 값이 나오면 히스토리 심기가 빠진 것이다.
 
-`warnings` 는 사람이 읽는 문장 배열이다. 스킬은 이 내용을 그대로 사용자에게 전한다. 등록된 저장소 중 커밋이 하나도 없다거나, 프롬프트가 임계값을 넘었다는 내용이 들어간다.
+`warnings` 는 사람이 읽는 canonical English 문장 배열이다. 등록된 저장소 중 커밋이 하나도 없다거나, 프롬프트가 임계값을 넘었다는 내용이 들어간다. 사용자에게 표시할 때 스킬은 최신 요청의 언어로 번역하고 날짜, 파일 경로, 명령, 기술 식별자는 그대로 둔다. 요청 언어가 불분명하면 영문 원문을 쓴다.
 
 `tokens.method` 는 `heuristic` 이다. `len(text) // 4` 로 계산한 어림값이라는 뜻이고, 정확한 값이 아니라고 사용자에게 말할 때 쓴다.
 

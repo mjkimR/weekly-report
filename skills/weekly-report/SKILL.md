@@ -21,7 +21,7 @@ Handles one weekly report. The CLI collects commits and builds a prompt file; th
    - 2 (`not_configured`): point the user to the `weekly-report-onboard` skill.
    - 3 (`repo_error`): report the failing path from `warnings` and point to the `weekly-report-repos` skill.
 4. If `period.since_source` is `fallback_7d`, no previous report was found and the window defaulted to the last 7 days. Ask the user whether that window is right before continuing.
-5. If `warnings` is non-empty, relay them to the user as-is.
+5. CLI warnings are canonical English. Before showing them to the user, translate each warning into the language of the user's latest request. Preserve dates, file paths, commands, and technical identifiers verbatim. If the request language is unclear, use the original English warning.
 6. Read the file at `paths.prompt`.
 7. Write the report following the prompt's instructions. The format comes from the template inside the prompt; tone, item length, and phrasing come from the past reports included in the prompt. If the user mentioned anything extra when invoking the skill (meetings, documentation work, things commits don't show), incorporate it.
 8. Write the report to the file at `paths.report` and nowhere else. Keep the first line — the `[//]: # (weekly-report: created ...)` comment — exactly as-is and write below it; the next run uses it to continue the collection window.
@@ -29,6 +29,7 @@ Handles one weekly report. The CLI collects commits and builds a prompt file; th
    - A one-line summary of the collection window and per-repository commit counts
    - The absolute path of `paths.report` (the user opens and edits it)
    - The token estimate only if `tokens.over_threshold` is true, noting it is a rough estimate (`len//4`)
+   - Repeat an approximate-boundary warning in the final response after writing the report, so it remains visible when commentary is collapsed. Tell the user to review the generated draft for duplicate items.
 
 ## Cautions
 

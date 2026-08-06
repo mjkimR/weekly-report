@@ -29,7 +29,7 @@
 - `tests/integration/test_main_cli.py`: import output and first-run warning lifecycle tests.
 - `skills/weekly-report/SKILL.md`: translate CLI warnings and repeat the approximate warning in the final handoff.
 - `skills/weekly-report-onboard/SKILL.md`: consume JSON import warnings, translate them, and explain expected first-run overlap.
-- `tests/unit/test_skill_warning_contract.py`: static checks that both skill contracts retain localization requirements.
+- Fresh-context behavior scenarios: verify both skills translate warnings and preserve technical literals under realistic response pressure.
 - `docs/contract.md`: CLI state, warning, and compatibility contract.
 - `docs/skills.md`: human-readable skill behavior.
 - `README.md`: date-only import behavior and release pin.
@@ -471,7 +471,6 @@ git commit -m "fix: avoid gaps at imported report boundaries"
 **Files:**
 - Modify: `skills/weekly-report/SKILL.md:20-40`
 - Modify: `skills/weekly-report-onboard/SKILL.md:90-125`
-- Create: `tests/unit/test_skill_warning_contract.py`
 - Modify: `docs/contract.md:55-105,150-158`
 - Modify: `docs/skills.md:20-140`
 - Modify: `README.md:30-55`
@@ -480,52 +479,11 @@ git commit -m "fix: avoid gaps at imported report boundaries"
 - Consumes: canonical English strings from Task 2's `warnings` arrays.
 - Produces: a stable agent contract that translates warnings at presentation time and repeats approximate-boundary warnings in final handoffs.
 
-- [ ] **Step 1: Add failing static skill-contract tests**
+- [ ] **Step 1: Run failing fresh-context behavior scenarios**
 
-Create `tests/unit/test_skill_warning_contract.py`:
+Following `superpowers:writing-skills`, run the current skills against realistic final-response scenarios before editing them. Combine at least three pressures: a non-English latest request, an explicit brevity/urgency request, and a canonical English approximate-boundary warning containing a date and file path. Verify RED by capturing any untranslated warning or missing final warning verbatim.
 
-```python
-from pathlib import Path
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-def skill_text(name: str) -> str:
-    return (REPO_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8")
-
-
-def test_user_facing_skills_translate_canonical_english_warnings():
-    for name in ("weekly-report", "weekly-report-onboard"):
-        text = skill_text(name)
-        assert "canonical English" in text
-        assert "language of the user's latest request" in text
-        assert "dates, file paths, commands, and technical identifiers" in text
-        assert "If the request language is unclear, use the original English warning" in text
-
-
-def test_weekly_report_repeats_approximate_warning_in_final_handoff():
-    text = skill_text("weekly-report")
-    assert "Repeat an approximate-boundary warning in the final response" in text
-
-
-def test_onboarding_import_examples_request_json():
-    text = skill_text("weekly-report-onboard")
-    assert "--weekly-from 2026-07-23 --json" in text
-    assert "history import" in text
-```
-
-- [ ] **Step 2: Run the skill-contract tests and verify they fail**
-
-Run:
-
-```bash
-uv run --isolated pytest tests/unit/test_skill_warning_contract.py -q
-```
-
-Expected: FAIL because the localization instructions and JSON import example do not exist.
-
-- [ ] **Step 3: Update `weekly-report` warning handling**
+- [ ] **Step 2: Update `weekly-report` warning handling**
 
 Replace the current “relay warnings as-is” instruction with this exact policy:
 
@@ -541,7 +499,7 @@ Add to the final handoff requirements:
 
 Do not paste the report body into the conversation.
 
-- [ ] **Step 4: Update onboarding import and warning handling**
+- [ ] **Step 3: Update onboarding import and warning handling**
 
 In `skills/weekly-report-onboard/SKILL.md`:
 
@@ -551,23 +509,17 @@ In `skills/weekly-report-onboard/SKILL.md`:
 - Treat the approximate-boundary warning during import and dry-run as expected, not as onboarding failure.
 - Include the translated overlap warning in the final onboarding summary.
 
-Use this instruction text so the static test has a stable contract:
+Use this instruction text as the stable behavior contract:
 
 ```markdown
 CLI warnings are canonical English. Translate them into the language of the user's latest request before presenting them. Preserve dates, file paths, commands, and technical identifiers verbatim. If the request language is unclear, use the original English warning.
 ```
 
-- [ ] **Step 5: Run skill-contract tests and verify they pass**
+- [ ] **Step 4: Re-run fresh-context behavior scenarios**
 
-Run:
+Run the same scenarios with the edited skills. Verify that every warning is translated into the latest request's language, dates and paths remain byte-for-byte unchanged, and `weekly-report` repeats the approximate-boundary warning in its final handoff. If an agent finds a new loophole, refine the instruction and re-test.
 
-```bash
-uv run --isolated pytest tests/unit/test_skill_warning_contract.py -q
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Update user and CLI documentation**
+- [ ] **Step 5: Update user and CLI documentation**
 
 Update `docs/contract.md` to specify:
 
@@ -580,24 +532,23 @@ Update `docs/contract.md` to specify:
 
 Update `docs/skills.md` so its steps match both runtime SKILL files. Update `README.md` with one concise note under State or CLI: the first collection after onboarding may overlap the imported report but will not omit boundary-day commits.
 
-- [ ] **Step 7: Run documentation and unit checks**
+- [ ] **Step 6: Run documentation and unit checks**
 
 Run:
 
 ```bash
 git diff --check
-uv run --isolated pytest tests/unit/test_skill_warning_contract.py tests/unit/test_report_file_manager.py -q
+uv run --isolated pytest tests/unit/test_report_file_manager.py -q
 ```
 
-Expected: no whitespace errors and all selected tests pass.
+Expected: no whitespace errors and all report-manager tests pass.
 
-- [ ] **Step 8: Commit Task 3**
+- [ ] **Step 7: Commit Task 3**
 
 ```bash
 git add \
   skills/weekly-report/SKILL.md \
   skills/weekly-report-onboard/SKILL.md \
-  tests/unit/test_skill_warning_contract.py \
   docs/contract.md \
   docs/skills.md \
   README.md

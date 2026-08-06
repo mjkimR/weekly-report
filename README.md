@@ -54,6 +54,8 @@ Everything lives under `~/.weekly-report/` (override with `WEEKLY_REPORT_HOME`):
 `history/` is the tool's only persistent state and is not tracked by Git — so it is not
 backed up either.
 
+Date-only onboarding starts the first collection at `00:00:00` on the imported report's date. This guarantees that boundary-day commits are not omitted, but the first generated draft may overlap the imported report and should be checked for duplicate items.
+
 ## Settings
 
 | Key | Default | Meaning |
